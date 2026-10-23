@@ -67,13 +67,13 @@ dotcrow task "write an e-mail telling a customer the delivery is two days late"
 dotcrow ask "what is a crow, in one sentence?"
 ```
 
-To build by hand you need [Rust](https://rustup.rs) 1.88+ and a C compiler: `cargo build --release`. The panel's JSON API, used by the page, phone apps and the upcoming WhatsApp bridge, is documented in [docs/painel.md](docs/painel.md) (Portuguese).
+To build by hand you need [Rust](https://rustup.rs) 1.88+ and a C compiler: `cargo build --release`. The panel's JSON API, used by the page, phone apps and the upcoming WhatsApp bridge, is documented in [Panel and API](docs/en/painel.md).
 
 **Status:** pre-alpha. The crows plan, review, write and act on the computer with real LLMs. Still ahead: a WhatsApp bridge, a native mobile app and a marketplace of recipes — see the [ROADMAP](ROADMAP.md).
 
 ## Contributing
 
-The main documentation is in Brazilian Portuguese, but issues and pull requests in English are welcome. Code identifiers are in English. Start with [CONTRIBUTING.md](CONTRIBUTING.md) and the issues labeled `boa-primeira-issue` (good first issue).
+Documentation is available in [English](docs/en/README.md) and [Brazilian Portuguese](docs/README.md). Issues and pull requests in English are welcome. Code identifiers are in English. Start with [CONTRIBUTING.md](CONTRIBUTING.md) (Portuguese) and the issues labeled `boa-primeira-issue` (good first issue).
 
 ## License
 

@@ -1,5 +1,7 @@
 # Documentação
 
+[English](en/README.md)
+
 | Documento | Do que trata |
 |---|---|
 | [Arquitetura](arquitetura.md) | As peças do DotCrow, o caminho de uma tarefa e as fronteiras de confiança |
