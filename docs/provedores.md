@@ -116,8 +116,8 @@ Acrescente o provedor na tabela abaixo e no CHANGELOG.
 
 | Provedor | id | Modelo padrão | Onde pegar a chave |
 |---|---|---|---|
-| Anthropic (Claude) | `anthropic` | `claude-sonnet-5-5` | [console.anthropic.com](https://console.anthropic.com/settings/keys) |
-| OpenAI (GPT) | `openai` | `gpt-6.1-sol` | [platform.openai.com](https://platform.openai.com/api-keys) |
+| Anthropic (Claude) | `anthropic` | `claude-haiku-5-5` | [console.anthropic.com](https://console.anthropic.com/settings/keys) |
+| OpenAI (GPT) | `openai` | `gpt-5-nano` | [platform.openai.com](https://platform.openai.com/api-keys) |
 | Google (Gemini) | `gemini` | `gemini-3.8-flash` | [aistudio.google.com](https://aistudio.google.com/apikey) |
 | OpenRouter | `openrouter` | `openrouter/auto` | [openrouter.ai](https://openrouter.ai/keys) |
 | DeepSeek | `deepseek` | `deepseek-flash` | [platform.deepseek.com](https://platform.deepseek.com/api_keys) |
