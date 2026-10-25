@@ -18,7 +18,7 @@ pub enum Tamanho {
 }
 
 /// Cor (paleta de 256) de cada provedor.
-fn cor_provedor(provedor: &str) -> u8 {
+pub fn cor_provedor(provedor: &str) -> u8 {
     match provedor {
         "anthropic" => 214,
         "openai" => 40,
