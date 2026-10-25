@@ -10,10 +10,10 @@ use crate::{CompletionRequest, CompletionResponse, KeySource, LlmProvider, Provi
 
 /// Id usado no cofre.
 pub const ID: &str = "anthropic";
-/// Modelo usado quando o dono não escolhe outro.
-pub const DEFAULT_MODEL: &str = "claude-sonnet-5-5";
-/// Modelo leve (faixa Fast).
+/// Modelo leve e barato: o padrão dos corvos.
 pub const FAST_MODEL: &str = "claude-haiku-5-5";
+/// Modelo usado quando o dono não escolhe outro: o barato. O Opus fica para o Oráculo.
+pub const DEFAULT_MODEL: &str = FAST_MODEL;
 /// Modelo forte (faixa Deep).
 pub const DEEP_MODEL: &str = "claude-opus-5-5";
 /// Endereço padrão da API.
@@ -44,14 +44,14 @@ impl Anthropic {
         })
     }
 
-    /// Modelo efetivo: o fixado pelo dono vence; senão, o Opus 5.5 em todas as faixas.
-    /// O dono pediu o Opus em tudo, sem Haiku. Para variar por faixa de novo, é só
-    /// trocar aqui (ou fixar outro modelo na aba Provedores).
+    /// Modelo efetivo: o fixado pelo dono vence; senão, o Haiku (barato) em todas as
+    /// faixas. Os corvos trabalham com modelos de tokens baratos; o Opus 5.5 entra só
+    /// no Oráculo, que pede o modelo de forma explícita.
     fn pick(&self, _tier: crate::Tier) -> &str {
         if let Some(m) = &self.model {
             return m;
         }
-        DEEP_MODEL
+        DEFAULT_MODEL
     }
 }
 
@@ -227,10 +227,11 @@ mod tests {
     fn tier_picks_the_model_when_none_is_pinned() {
         use crate::{NoKeys, Tier};
         let auto = Anthropic::new(std::sync::Arc::new(NoKeys), None, None).unwrap();
-        // O dono escolheu Opus 5.5 em todas as faixas (sem Haiku).
-        assert_eq!(auto.pick(Tier::Fast), DEEP_MODEL);
-        assert_eq!(auto.pick(Tier::Standard), DEEP_MODEL);
-        assert_eq!(auto.pick(Tier::Deep), DEEP_MODEL);
+        // Os corvos usam o modelo barato em todas as faixas; o Opus é só do Oráculo.
+        assert_eq!(auto.pick(Tier::Fast), FAST_MODEL);
+        assert_eq!(auto.pick(Tier::Standard), FAST_MODEL);
+        assert_eq!(auto.pick(Tier::Deep), FAST_MODEL);
+        assert_ne!(DEEP_MODEL, FAST_MODEL);
         // Modelo fixado pelo dono vence qualquer faixa.
         let fixo = Anthropic::new(std::sync::Arc::new(NoKeys), Some("meu-modelo".into()), None).unwrap();
         assert_eq!(fixo.pick(Tier::Fast), "meu-modelo");

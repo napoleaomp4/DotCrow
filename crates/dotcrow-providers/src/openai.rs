@@ -32,7 +32,8 @@ pub struct Flavor {
 pub const OPENAI: Flavor = Flavor {
     id: "openai",
     base_url: "https://api.openai.com/v1",
-    default_model: "gpt-6.1-sol",
+    // Barato: os corvos trabalham com modelos de tokens baratos.
+    default_model: "gpt-5-nano",
     needs_key: true,
     max_tokens_field: "max_completion_tokens",
     reasoning_effort: Some("low"),
