@@ -13,9 +13,10 @@
 //! 5.5 **não** entra aqui — ele fica reservado para os pontos de controle. Dá para
 //! trocar o modelo de cada corvo depois com [`Corvo::definir_modelo`].
 
+pub mod conversa;
 mod desenho;
 
-pub use desenho::{Tamanho, desenhar};
+pub use desenho::{Tamanho, cor_provedor, desenhar};
 
 /// Quantos corvos vivem ao mesmo tempo.
 pub const POPULACAO: usize = 10;
@@ -95,6 +96,22 @@ impl Personalidade {
             Personalidade::Metodico => "metódico",
             Personalidade::Visionario => "visionário",
             Personalidade::Pragmatico => "pragmático",
+        }
+    }
+
+    /// Como esse jeito aparece numa conversa.
+    pub fn jeito(&self) -> &'static str {
+        match self {
+            Personalidade::Cauteloso => "pesa os riscos antes de concordar e lembra o que pode dar errado",
+            Personalidade::Criativo => "traz ideias novas e inesperadas, gosta de imaginar possibilidades",
+            Personalidade::Cetico => "duvida, pede provas e aponta furos no que os outros dizem",
+            Personalidade::Executor => "vai direto ao ponto e propõe o próximo passo concreto",
+            Personalidade::Estrategista => "pensa no objetivo maior e no plano antes dos detalhes",
+            Personalidade::Diplomata => "busca consenso, junta as opiniões e acalma os ânimos",
+            Personalidade::Rebelde => "desafia o que está posto e defende o caminho menos óbvio",
+            Personalidade::Metodico => "organiza em passos, gosta de ordem e de checklist",
+            Personalidade::Visionario => "fala do futuro e do que isso pode virar daqui a anos",
+            Personalidade::Pragmatico => "foca no que funciona agora, com o que já existe",
         }
     }
 }
