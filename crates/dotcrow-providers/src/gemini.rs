@@ -64,7 +64,7 @@ fn body(req: &CompletionRequest) -> Value {
 fn parse(v: &Value, fallback_model: &str) -> Result<CompletionResponse, ProviderError> {
     let Some(candidate) = v.pointer("/candidates/0") else {
         let reason = v.pointer("/promptFeedback/blockReason").and_then(Value::as_str).unwrap_or("sem candidatos");
-        return Err(ProviderError::BadRequest(format!("o Gemini bloqueou o pedido ({reason})")));
+        return Err(ProviderError::Refused(format!("o Gemini bloqueou o pedido ({reason})")));
     };
     let text: String = candidate
         .pointer("/content/parts")
@@ -169,7 +169,7 @@ mod tests {
         let v = json!({"modelVersion":"gemini-x","candidates":[{"content":{"parts":[{"text":"pensando","thought":true},{"text":"Oi"}]},"finishReason":"STOP"}]});
         assert_eq!(parse(&v, "m").unwrap().text, "Oi");
         let blocked = json!({"promptFeedback":{"blockReason":"SAFETY"}});
-        assert!(matches!(parse(&blocked, "m"), Err(ProviderError::BadRequest(_))));
+        assert!(matches!(parse(&blocked, "m"), Err(ProviderError::Refused(_))));
         let empty = json!({"candidates":[{"content":{"parts":[]},"finishReason":"MAX_TOKENS"}]});
         assert!(matches!(parse(&empty, "m"), Err(ProviderError::Unavailable(_))));
     }
