@@ -11,12 +11,14 @@ use crate::Paint;
 pub struct Render {
     p: Paint,
     aberto: Option<usize>,
+    /// O Oráculo só conversou: não há "tarefa concluída" para anunciar.
+    conversa: bool,
 }
 
 impl Render {
     /// Novo desenhista.
     pub fn new(p: Paint) -> Self {
-        Self { p, aberto: None }
+        Self { p, aberto: None, conversa: false }
     }
 
     /// Fecha a linha de uma etapa que estava transmitindo.
@@ -74,7 +76,38 @@ impl Render {
             }
             Event::Finished { .. } => {
                 self.fechar();
-                println!("{}", p.green("✔ Tarefa concluída."));
+                if !self.conversa {
+                    println!("{}", p.green("✔ Tarefa concluída."));
+                }
+            }
+            Event::Oraculo { nivel, corvos, conselho, resposta, model, .. } => {
+                self.fechar();
+                let quem = if model.is_empty() { String::new() } else { format!("· {model}") };
+                match nivel.as_str() {
+                    "conversa" => {
+                        self.conversa = true;
+                        println!("{} {}", p.bold("🔮 Oráculo"), p.dim(&quem));
+                        if let Some(r) = resposta {
+                            println!("{}\n", indent(&r));
+                        }
+                    }
+                    "simples" => {
+                        println!(
+                            "{} {}",
+                            p.bold(&format!("🔮 Oráculo: tarefa simples, só {} trabalha", corvos.join(", "))),
+                            p.dim(&quem)
+                        );
+                        if !conselho.is_empty() {
+                            println!("   {}\n", p.dim(&conselho));
+                        }
+                    }
+                    _ => {
+                        println!("{} {}", p.bold("🔮 Oráculo: o bando inteiro trabalha"), p.dim(&quem));
+                        if !conselho.is_empty() {
+                            println!("{}\n", p.dim(&indent(&conselho)));
+                        }
+                    }
+                }
             }
             Event::Failed { error } => {
                 self.fechar();

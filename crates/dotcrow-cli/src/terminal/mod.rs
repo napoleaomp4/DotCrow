@@ -354,6 +354,7 @@ pastas com /pasta + caminho."
             "/chave" | "/chaves" => self.chave(arg).await,
             "/civ" | "/civilizacao" | "/bando" | "/corvos" => self.civilizacao(arg).await,
             "/audio" | "/áudio" | "/mic" | "/microfone" => self.audio(arg).await,
+            "/conectores" | "/integracoes" => crate::conectores::listar(&self.store, arg, &p),
             "/celular" | "/android" => {
                 if let Err(e) = crate::celular_status().await {
                     println!("{}", p.red(&format!("{e:#}")));
@@ -412,6 +413,22 @@ pastas com /pasta + caminho."
         }
         if matches!(arg, "mortos") {
             let _ = crate::civ::mostrar_mortos(&e, &p);
+            return;
+        }
+        if matches!(arg, "pausar" | "parar") {
+            match crate::civ::pausar(&pasta, &mut e) {
+                Ok(true) => println!("{}", p.yellow("⏸ Civilização pausada. Aqui seguem os 6 corvos e o Oráculo.")),
+                Ok(false) => println!("{}", p.dim("Ela já estava pausada. /civ retomar volta.")),
+                Err(err) => println!("{}", p.red(&format!("{err:#}"))),
+            }
+            return;
+        }
+        if matches!(arg, "retomar" | "continuar" | "voltar") {
+            match crate::civ::retomar(&pasta, &mut e) {
+                Ok(Some(s)) => println!("{}", p.green(&format!("▶ Civilização de volta (pausada {} min).", s / 60))),
+                Ok(None) => println!("{}", p.dim("Ela não estava pausada.")),
+                Err(err) => println!("{}", p.red(&format!("{err:#}"))),
+            }
             return;
         }
         if let Some(resto) = ["missao ", "missão ", "fazer "].iter().find_map(|pre| arg.strip_prefix(pre)) {
@@ -501,7 +518,7 @@ pastas com /pasta + caminho."
 
     fn ajuda(&self) {
         let p = self.p;
-        let linhas: [(&str, &str); 29] = [
+        let linhas: [(&str, &str); 31] = [
             ("", "Pedidos"),
             ("texto livre", "uma tarefa para os corvos (eles trabalham nos arquivos do projeto)"),
             ("/audio [pra quê]", "abre o microfone: você fala, Enter termina e os corvos fazem o que você pediu"),
@@ -525,9 +542,14 @@ pastas com /pasta + caminho."
                 "os 10 corvos conversam (cada um com o seu modelo); escreva para falar com eles, pare encerra",
             ),
             ("/civ ver|julgar|mortos", "o bando · um julgamento (jurados + oráculo) · o Livro dos Mortos"),
+            ("/civ pausar|retomar", "pausa a civilização (o relógio das 24 h para) e o DotCrow fica com os 6 corvos"),
             ("/civ missao <corvo> <tarefa>", "um corvo faz a tarefa com mãos (PC, celular, internet), do jeito dele"),
             ("", "Celular"),
             ("/celular", "o que os corvos podem fazer no Android (tocar, rolar, digitar, ligar, SMS) e como ligar"),
+            (
+                "/conectores [busca]",
+                "os 257 serviços com API (X, GitHub, Drive...): dotcrow conectores adicionar <id> liga",
+            ),
             ("", "Controle"),
             ("/desfazer", "volta os arquivos que a última tarefa mudou"),
             ("/modo computador|livre|sandbox", "quanto os corvos podem fazer sem perguntar"),
@@ -819,6 +841,37 @@ para ver os arquivos do celular em ~/storage/shared.")
             println!("{}", p.dim(&format!("📎 {a}")));
         }
 
+        // 1.5. O Oráculo (Opus 5.5) lê o pedido e decide quantos corvos ele precisa.
+        // "Oi" ele mesmo responde; tarefa pequena vai para um corvo só.
+        let oraculo = self.store.oraculo();
+        let contexto_oraculo = match self.historico_para_corvos() {
+            h if h.trim().is_empty() => format!("# Pedido do dono\n{pedido_final}"),
+            h => format!("# Conversa até aqui\n{h}\n\n# Pedido do dono agora\n{pedido_final}"),
+        };
+        if p.on {
+            print!("{}", p.dim("🔮 O Oráculo está lendo o pedido…"));
+            let _ = std::io::Write::flush(&mut std::io::stdout());
+        }
+        let triagem = tokio::select! {
+            t = orchestrator::triar(oraculo.as_ref().unwrap_or(&router), &router, &contexto_oraculo) => Some(t),
+            _ = tokio::signal::ctrl_c() => None,
+        };
+        if p.on {
+            print!("\r\x1b[2K");
+        }
+        let Some(triagem) = triagem else {
+            println!("{}", p.dim("⏹ Cancelado."));
+            return;
+        };
+        if triagem.nivel == orchestrator::Nivel::Conversa {
+            let quem = if triagem.model.is_empty() { String::new() } else { format!(" · {}", triagem.model) };
+            println!("{} {}\n{}\n", p.bold("🔮 Oráculo"), p.dim(&quem), render::indent(&triagem.resposta));
+            let bloco = format!("## Pedido\n{pedido}\n\n## Entrega\n{}\n\n", triagem.resposta);
+            self.historico.push_str(&bloco);
+            return;
+        }
+        let alinhar = alinhar && triagem.nivel == orchestrator::Nivel::Completa;
+
         // 2. O Huginn pergunta antes, se algo mudaria o resultado.
         if alinhar && !self.projeto.cfg.direto {
             println!("{}", p.dim("🧭 O Huginn está vendo se precisa perguntar algo..."));
@@ -862,7 +915,8 @@ para ver os arquivos do celular em ~/storage/shared.")
         )
         .com_perguntas()
         .com_projeto(self.projeto.extras(), diario.clone())
-        .com_saidas(self.downloads.clone());
+        .com_saidas(self.downloads.clone())
+        .com_conectores(crate::conectores::Conexoes::do_store(&self.store));
         let memoria = self.store.master_key().ok().and_then(|k| memoria::Memoria::abrir(self.store.dir(), k).ok());
         let historico = self.historico_para_corvos();
         let input = orchestrator::TaskInput {
@@ -872,6 +926,7 @@ para ver os arquivos do celular em ~/storage/shared.")
             history: Some(&historico),
             memory: memoria.as_ref().map(|m| m as &dyn dotcrow_agents::Memory),
             inbox: None,
+            oraculo: orchestrator::Oraculo::Decidido(&triagem),
         };
         println!();
         let mut render = Render::new(p);
