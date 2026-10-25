@@ -229,6 +229,12 @@ Eventos novos da tarefa: `action_started` (`n`, `tool`, `title`, `why`), `action
 
 `GET /api/celular` responde `{"lan": true, "url": "...", "qr_svg": "<svg ...>"}` quando o painel foi aberto com `--rede`.
 
+### Civilização
+
+A página `/civ` (botão **Civilização ↗** no painel) tem três janelas: **Terrenos** (`/civ#terrenos`), **Mentes** (`/civ#mentes`) e **Conversa** (`/civ#conversa`). Ela só lê; quem muda a civilização é a conversa no terminal. Usa o mesmo código de acesso guardado no navegador.
+
+`GET /api/civ` responde, entre outros: `corvos` (cada um com `nome`, `personalidade`, `especialidade`, `modelo`, `reputacao`, `energia`, `dotcoins`, `comida`, `sementes`, `dormindo`, `local`, `fazendo`, `artefatos`, `sprite` — o desenho em SVG — e `mente`, com `pontos` `{x, y, c, t}` no círculo e `ligacoes` `[i, j, força]`), `terrenos` (`id`, `x`, `y`, `dono`, `plantio`), `ofertas`, `contratos`, `mercado`, `podio`, `diario` e `conversa` (as últimas 80 falas com `n`, `quem`, `texto`, `responde`, `forma` e `cor` da marca).
+
 ## Próximos passos
 
 - **WhatsApp:** uma ponte que recebe mensagens, cria tarefas por `POST /api/tarefas` e devolve o resumo quando chega o evento `finished`.
