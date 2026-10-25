@@ -28,6 +28,7 @@ pub fn ativa() -> bool {
 
 /// Como ficou a trava.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 pub enum Situacao {
     /// O kernel aplicou tudo.
     Completa,
