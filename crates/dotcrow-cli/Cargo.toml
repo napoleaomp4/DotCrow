@@ -36,6 +36,10 @@ tokio-tungstenite = { workspace = true }
 rustyline = { workspace = true }
 terminal_size = "0.4.4"
 
+# A trava da Civilização: o processo só enxerga a pasta DotCrow (Landlock, do kernel).
+[target.'cfg(target_os = "linux")'.dependencies]
+landlock = "0.4.4"
+
 [dev-dependencies]
 dotcrow-relay = { workspace = true }
 
