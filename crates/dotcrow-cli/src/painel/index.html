@@ -78,6 +78,11 @@ a { color: var(--sheen); }
   padding: 9px 10px; text-align: left; cursor: pointer; color: var(--muted);
 }
 .nav button:hover { color: var(--ink); background: var(--surface); }
+.nav a.nav-link {
+  display: flex; align-items: center; gap: 10px; border-radius: var(--radius-s);
+  padding: 9px 10px; color: var(--muted); text-decoration: none;
+}
+.nav a.nav-link:hover { color: var(--ink); background: var(--surface); }
 .nav button[aria-current="page"] { color: var(--ink); background: var(--surface-2); }
 .nav svg { width: 18px; height: 18px; flex: none; }
 .rail-foot { margin-top: auto; padding: 0 8px; font-size: 13px; color: var(--muted); display: grid; gap: 10px; }
@@ -101,7 +106,7 @@ h2 { font-size: 17px; margin: 0 0 12px; font-weight: 640; }
   }
   .brand, .rail-foot { display: none; }
   .nav { flex-direction: row; width: 100%; justify-content: space-around; }
-  .nav button { flex-direction: column; gap: 3px; font-size: 12px; padding: 6px 8px; }
+  .nav button, .nav a.nav-link { flex-direction: column; gap: 3px; font-size: 12px; padding: 6px 8px; }
   main { padding: 20px 16px 110px; }
   h1 { font-size: 24px; }
 }
@@ -356,6 +361,10 @@ pre.cmd { background: var(--surface); border: 1px solid var(--line); border-radi
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2.5" width="10" height="19" rx="2.5"/><circle cx="12" cy="18" r="1" fill="currentColor"/></svg>
         Celular
       </button>
+      <a class="nav-link" href="/civ#terrenos" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="8" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/><circle cx="17" cy="17" r="4"/></svg>
+        Civilização ↗
+      </a>
     </nav>
     <div class="rail-foot">
       <button class="close-btn" id="close-painel" type="button">

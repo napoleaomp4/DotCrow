@@ -1,0 +1,471 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<title>Civilização · DotCrow</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<style>
+:root {
+  --bg: #000000;
+  --surface: #0B0B0B;
+  --surface-2: #171717;
+  --ink: #FFFFFF;
+  --muted: #8C8C8C;
+  --line: #242424;
+  --sheen: #FFFFFF;
+  --err: #FF5C5C;
+  --radius-s: 6px;
+  --radius-m: 10px;
+  --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, monospace;
+  /* As cores das mentes. */
+  --c-personalidade: #ef5350;
+  --c-ideias: #ab47bc;
+  --c-habilidades: #66bb6a;
+  --c-conhecimentos: #29b6f6;
+  --c-relacoes: #ffa726;
+  --c-criacoes: #ffee58;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #FFFFFF; --surface: #FAFAFA; --surface-2: #EDEDED; --ink: #000000; --muted: #6B6B6B;
+    --line: #E2E2E2; --sheen: #000000; --err: #C62828; color-scheme: light;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.5 var(--sans); -webkit-font-smoothing: antialiased; }
+button, input { font: inherit; color: inherit; }
+a { color: var(--sheen); }
+:focus-visible { outline: 2px solid var(--sheen); outline-offset: 2px; }
+.muted { color: var(--muted); }
+.mono { font-family: var(--mono); font-size: 13px; }
+
+header.top {
+  position: sticky; top: 0; z-index: 5; background: var(--bg); border-bottom: 1px solid var(--line);
+  padding: 12px 16px; display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center;
+}
+header.top h1 { font-size: 17px; margin: 0; letter-spacing: -.01em; display: flex; align-items: center; gap: 10px; }
+header.top h1 img { width: 22px; height: 22px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; font-size: 13px; color: var(--muted); white-space: nowrap; }
+.chip.forte { color: var(--ink); border-color: var(--ink); }
+nav.tabs { display: flex; gap: 4px; margin-left: auto; flex-wrap: wrap; }
+nav.tabs a {
+  text-decoration: none; padding: 6px 12px; border-radius: var(--radius-s); color: var(--muted); border: 1px solid transparent;
+}
+nav.tabs a[aria-current="page"] { color: var(--ink); border-color: var(--line); background: var(--surface-2); }
+
+main { padding: 16px; max-width: 1400px; margin: 0 auto; }
+section.vista[hidden] { display: none; }
+.cabeca { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin: 4px 0 14px; }
+.cabeca h2 { font-size: 15px; margin: 0; }
+.cabeca a { font-size: 13px; color: var(--muted); }
+
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-m); padding: 14px; }
+.duas { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 16px; }
+@media (max-width: 900px) { .duas { grid-template-columns: minmax(0, 1fr); } }
+
+/* Terrenos */
+.mapa { display: grid; gap: 8px; }
+.lote {
+  position: relative; aspect-ratio: 1; border-radius: var(--radius-s); border: 1px solid var(--line);
+  padding: 8px; display: flex; flex-direction: column; justify-content: space-between; overflow: hidden;
+  background: repeating-linear-gradient(135deg, rgba(120, 85, 50, .18) 0 6px, rgba(120, 85, 50, .10) 6px 12px);
+}
+.lote.livre { border-style: dashed; background: none; }
+.lote .id { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.lote .dono { font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lote .planta { display: flex; align-items: center; justify-content: center; flex: 1; }
+.anel { width: 46%; aspect-ratio: 1; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-family: var(--mono); }
+.lote .quem { display: flex; gap: 2px; flex-wrap: wrap; min-height: 22px; }
+.lote .quem img { width: 22px; height: 22px; image-rendering: pixelated; border-radius: 3px; }
+.legenda { display: flex; gap: 14px; flex-wrap: wrap; font-size: 13px; color: var(--muted); margin-top: 10px; }
+
+.bolsa { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 10px; align-items: center; padding: 8px 0; border-top: 1px solid var(--line); }
+.bolsa:first-child { border-top: 0; }
+.bolsa img { width: 40px; height: 40px; image-rendering: pixelated; border-radius: 4px; }
+.bolsa .linha1 { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.bolsa .linha1 b { font-size: 14px; }
+.barra { height: 6px; border-radius: 3px; background: var(--surface-2); overflow: hidden; margin: 4px 0; }
+.barra > i { display: block; height: 100%; background: var(--ink); }
+.barra.baixa > i { background: var(--err); }
+.numeros { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.lista { margin: 0; padding: 0; list-style: none; font-size: 13px; }
+.lista li { padding: 6px 0; border-top: 1px solid var(--line); }
+.lista li:first-child { border-top: 0; }
+h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 18px 0 6px; }
+h3:first-child { margin-top: 0; }
+
+/* Mentes */
+.mentes { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.mente { position: relative; }
+.mente .topo { display: flex; gap: 10px; align-items: center; margin-bottom: 6px; }
+.mente .topo img { width: 32px; height: 32px; image-rendering: pixelated; border-radius: 4px; }
+.mente canvas { width: 100%; aspect-ratio: 1; display: block; cursor: crosshair; }
+.mente .dica {
+  position: absolute; left: 14px; right: 14px; bottom: 14px; font-size: 12px; background: var(--surface-2);
+  border: 1px solid var(--line); border-radius: var(--radius-s); padding: 6px 8px; pointer-events: none;
+}
+.mente .dica[hidden] { display: none; }
+.cats { display: flex; flex-wrap: wrap; gap: 10px; font-size: 12px; color: var(--muted); margin: 0 0 14px; }
+.cats span::before { content: ""; display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; background: var(--c); vertical-align: 0; }
+
+/* Conversa */
+.conversa { position: relative; padding-left: 48px; }
+.conversa svg.fios { position: absolute; left: 0; top: 0; width: 48px; height: 100%; overflow: visible; pointer-events: none; }
+.fala { display: grid; grid-template-columns: 2cm minmax(0, 1fr); gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }
+.fala:first-child { border-top: 0; }
+.fala img.boneco { width: 2cm; height: 2cm; image-rendering: pixelated; border-radius: 6px; }
+.fala .quem { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.fala .quem b { font-size: 14px; }
+.marca { font-family: var(--mono); font-size: 13px; font-weight: 700; border-radius: 4px; padding: 0 5px; border: 1px solid currentColor; }
+/* No tema claro, as marcas ganham um fundo escuro para o amarelo e o ciano aparecerem. */
+@media (prefers-color-scheme: light) { .marca { background: #1a1a1a; } }
+.resp { font-size: 13px; color: var(--muted); }
+.fala p { margin: 4px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.fala.mundo { grid-template-columns: minmax(0, 1fr); padding: 6px 0; font-size: 13px; color: var(--muted); }
+.fala.mundo .marca { font-size: 11px; opacity: .7; }
+.fala.dono b { color: var(--ink); }
+
+.gate { max-width: 460px; margin: 12vh auto; text-align: center; }
+.gate input { width: 100%; padding: 10px 12px; border-radius: var(--radius-s); border: 1px solid var(--line); background: var(--surface); margin: 12px 0; }
+.gate button { padding: 8px 16px; border-radius: var(--radius-s); border: 1px solid var(--ink); background: var(--ink); color: var(--bg); cursor: pointer; }
+.vazio { color: var(--muted); font-size: 14px; padding: 18px 0; }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+<header class="top">
+  <h1><img src="/favicon.svg" alt="">Civilização dos Corvos</h1>
+  <div class="chips" id="chips"></div>
+  <nav class="tabs" aria-label="Janelas">
+    <a href="#terrenos" data-v="terrenos">Terrenos</a>
+    <a href="#mentes" data-v="mentes">Mentes</a>
+    <a href="#conversa" data-v="conversa">Conversa</a>
+  </nav>
+</header>
+<main id="main">
+  <section class="vista" id="v-terrenos" hidden>
+    <div class="cabeca"><h2>Os terrenos</h2><span class="muted" id="t-sub"></span><a href="/civ#terrenos" target="_blank" rel="noopener">abrir em outra janela ↗</a></div>
+    <div class="duas">
+      <div class="card">
+        <div class="mapa" id="mapa"></div>
+        <div class="legenda">
+          <span>▦ terra do dono</span><span>◌ plantado (30 s até colher)</span><span>🌾 pronto para colher</span><span>⬚ à venda no Mercado Central</span>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Bolsas</h3>
+        <div id="bolsas"></div>
+        <h3>Ofertas</h3>
+        <ul class="lista" id="ofertas"></ul>
+        <h3>Contratos</h3>
+        <ul class="lista" id="contratos"></ul>
+        <h3>Acontecimentos</h3>
+        <ul class="lista" id="diario"></ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="vista" id="v-mentes" hidden>
+    <div class="cabeca"><h2>As mentes</h2><span class="muted">cada ponto é uma lembrança, posta pelo embedding; pontos parecidos ficam ligados. O círculo cresce com a memória.</span><a href="/civ#mentes" target="_blank" rel="noopener">abrir em outra janela ↗</a></div>
+    <div class="cats">
+      <span style="--c: var(--c-personalidade)">personalidade (falas)</span>
+      <span style="--c: var(--c-ideias)">ideias e ideologias (pensamentos)</span>
+      <span style="--c: var(--c-habilidades)">habilidades (lições)</span>
+      <span style="--c: var(--c-conhecimentos)">conhecimentos (pesquisas)</span>
+      <span style="--c: var(--c-relacoes)">relações (perguntas respondidas)</span>
+      <span style="--c: var(--c-criacoes)">criações (artefatos)</span>
+    </div>
+    <div class="mentes" id="mentes"></div>
+  </section>
+
+  <section class="vista" id="v-conversa" hidden>
+    <div class="cabeca"><h2>A conversa</h2><span class="muted">cada fala tem a sua marca; a linha liga a resposta à fala respondida.</span><a href="/civ#conversa" target="_blank" rel="noopener">abrir em outra janela ↗</a></div>
+    <div class="card"><div class="conversa" id="conversa"><svg class="fios" id="fios" aria-hidden="true"></svg></div></div>
+  </section>
+</main>
+
+<script>
+"use strict";
+(() => {
+  const STORE_KEY = "dotcrow.code";
+  let memoria = "";
+  const store = {
+    get() { try { return localStorage.getItem(STORE_KEY) || memoria; } catch { return memoria; } },
+    set(v) { memoria = v; try { localStorage.setItem(STORE_KEY, v); } catch {} },
+  };
+  const daHash = new URLSearchParams(location.hash.slice(1)).get("t");
+  if (daHash) { store.set(daHash); history.replaceState(null, "", location.pathname + "#terrenos"); }
+
+  const $ = (s, r = document) => r.querySelector(s);
+  const el = (tag, attrs = {}, ...kids) => {
+    const n = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) {
+      if (v === undefined || v === null || v === false) continue;
+      if (k === "class") n.className = v;
+      else if (k === "text") n.textContent = v;
+      else if (k === "style") n.setAttribute("style", v);
+      else n.setAttribute(k, v === true ? "" : v);
+    }
+    for (const kid of kids.flat()) if (kid !== null && kid !== undefined) n.append(kid);
+    return n;
+  };
+  const svgUrl = (svg) => "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+  const boneco = (svg, cls) => el("img", { src: svgUrl(svg), alt: "", class: cls });
+  const reduz = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  let dados = null;
+  let vista = "terrenos";
+
+  function portao(msg) {
+    $("#main").replaceChildren(el("div", { class: "gate" },
+      el("h2", { text: "Código de acesso" }),
+      el("p", { class: "muted", text: msg || "Abra o painel do DotCrow uma vez neste navegador, ou cole aqui o código que aparece no terminal (dotcrow painel)." }),
+      el("input", { id: "cod", autocomplete: "off", spellcheck: "false", placeholder: "código" }),
+      el("button", { id: "ok", type: "button", text: "Entrar" })));
+    $("#ok").addEventListener("click", () => { store.set($("#cod").value.trim()); location.reload(); });
+  }
+
+  async function carregar() {
+    if (!store.get()) { portao(); return false; }
+    const r = await fetch("/api/civ", { headers: { Authorization: "Bearer " + store.get() } });
+    if (r.status === 401) { portao("O código não confere. Confira no terminal."); return false; }
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { $("#chips").replaceChildren(el("span", { class: "chip", text: d.error || "erro " + r.status })); return true; }
+    dados = d;
+    desenhar();
+    return true;
+  }
+
+  function trocarVista() {
+    const h = (location.hash || "#terrenos").slice(1);
+    vista = ["terrenos", "mentes", "conversa"].includes(h) ? h : "terrenos";
+    for (const a of document.querySelectorAll("nav.tabs a")) {
+      if (a.dataset.v === vista) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
+    }
+    for (const v of ["terrenos", "mentes", "conversa"]) $("#v-" + v).hidden = v !== vista;
+    if (dados) desenhar();
+  }
+  addEventListener("hashchange", trocarVista);
+
+  function chips() {
+    const d = dados;
+    const c = [
+      el("span", { class: "chip", text: "geração " + d.geracao }),
+      el("span", { class: "chip", text: d.falas + " falas" }),
+      el("span", { class: "chip", text: d.julgamentos + " julgamento(s)" }),
+      el("span", { class: "chip", text: d.terrenos.length + " m²" }),
+    ];
+    if (d.pausada) c.push(el("span", { class: "chip forte", text: "⏸ pausada" }));
+    if (d.mercado) c.push(el("span", { class: "chip forte", text: "🔔 mercado aberto por " + d.mercado.aberto_por + " (" + Math.max(0, d.mercado.ate - d.agora) + " s)" }));
+    if (d.podio.length) c.push(el("span", { class: "chip", text: "🏆 " + d.podio.join(", ") }));
+    $("#chips").replaceChildren(...c);
+  }
+
+  const porNome = () => Object.fromEntries(dados.corvos.map((c) => [c.nome, c]));
+
+  function terrenos() {
+    const d = dados, corvos = porNome();
+    $("#t-sub").textContent = d.terrenos.length + " m² · " + d.nascimentos + " nascimentos (a cada 2, surge 1 m²)";
+    const mapa = $("#mapa");
+    mapa.style.gridTemplateColumns = "repeat(" + Math.min(d.largura, Math.max(1, d.terrenos.length)) + ", minmax(0, 1fr))";
+    if (!d.terrenos.length) { mapa.replaceChildren(el("div", { class: "vazio", text: "Ainda não há terrenos." })); }
+    else mapa.replaceChildren(...d.terrenos.map((t) => {
+      const dono = t.dono ? corvos[t.dono] : null;
+      const lote = el("div", { class: "lote" + (t.dono ? "" : " livre") });
+      if (dono) lote.style.boxShadow = "inset 0 0 0 2px " + dono.cor + "66";
+      let planta;
+      if (t.plantio) {
+        const total = Math.max(1, t.plantio.pronto - t.plantio.inicio);
+        const falta = Math.max(0, t.plantio.pronto - d.agora);
+        const feito = Math.round(100 * (1 - falta / total));
+        planta = falta === 0
+          ? el("div", { class: "anel", style: "font-size:28px", text: "🌾", title: "pronto para colher" })
+          : el("div", { class: "anel", style: "background: conic-gradient(var(--ink) " + feito + "%, var(--surface-2) 0)", title: "plantado por " + t.plantio.plantado_por },
+              el("span", { style: "background: var(--surface); border-radius: 50%; width: 70%; aspect-ratio: 1; display: grid; place-items: center", text: falta + "s" }));
+      } else {
+        planta = el("div", { class: "muted", style: "font-size:12px", text: t.dono ? "vazio" : "à venda · 50" });
+      }
+      const ali = d.corvos.filter((c) => c.local === t.id);
+      lote.append(
+        el("div", {}, el("div", { class: "id", text: t.id }), el("div", { class: "dono", text: t.dono || "Mercado Central" })),
+        el("div", { class: "planta" }, planta),
+        el("div", { class: "quem" }, ...ali.map((c) => { const i = boneco(c.sprite); i.title = c.nome + (c.fazendo ? " · " + c.fazendo : ""); return i; })),
+      );
+      return lote;
+    }));
+
+    $("#bolsas").replaceChildren(...d.corvos.map((c) => {
+      const e = c.energia ?? 0;
+      return el("div", { class: "bolsa" },
+        boneco(c.sprite),
+        el("div", {},
+          el("div", { class: "linha1" },
+            el("b", { text: c.nome }),
+            el("span", { class: "muted", style: "font-size:12px", text: c.personalidade + " · " + c.especialidade }),
+            c.dormindo ? el("span", { class: "chip", text: "😴 dormindo" }) : null,
+            c.podio ? el("span", { class: "chip", text: "🏆" }) : null),
+          el("div", { class: "barra" + (e <= 60 ? " baixa" : ""), title: "energia " + Math.round(e) + "%" }, el("i", { style: "width:" + Math.round(e) + "%" })),
+          el("div", { class: "numeros", text: "⚡" + Math.round(e) + "%  💰" + (c.dotcoins ?? 0) + "  🍞" + (c.comida ?? 0) + "  🌰" + (c.sementes ?? 0) + (c.fazendo ? "  · " + c.fazendo : "") })));
+    }));
+    const li = (t) => el("li", { text: t });
+    $("#ofertas").replaceChildren(...(d.ofertas.length ? d.ofertas.map((o) => li(o.id + " · " + o.de + " vende " + o.item + " por " + o.preco + (o.para ? " (para " + o.para + ")" : ""))) : [li("nenhuma")]));
+    const contratos = d.contratos.map((c) => li(c.id + " · " + c.patrao + " → " + c.empregado + " · " + c.pagamento + " dotcoins · " + c.servico + (c.ate ? (c.ate > d.agora ? " · valendo" : " · terminou") : " · proposta")));
+    $("#contratos").replaceChildren(...(contratos.length ? contratos : [li("nenhum")]));
+    $("#diario").replaceChildren(...(d.diario.length ? d.diario.map(li) : [li("nada ainda")]));
+  }
+
+  // ---------- Mentes: um círculo que gira por corvo ----------
+  const cores = {};
+  for (const c of ["personalidade", "ideias", "habilidades", "conhecimentos", "relacoes", "criacoes"]) {
+    cores[c] = getComputedStyle(document.documentElement).getPropertyValue("--c-" + c).trim() || "#fff";
+  }
+  let telas = [];
+  let angulo = 0;
+  function mentes() {
+    const box = $("#mentes");
+    const ja = new Map(telas.map((t) => [t.nome, t]));
+    telas = dados.corvos.map((c) => {
+      let t = ja.get(c.nome);
+      if (!t) {
+        const canvas = el("canvas", { width: 520, height: 520, role: "img", "aria-label": "mente de " + c.nome });
+        const dica = el("div", { class: "dica", hidden: true });
+        const card = el("div", { class: "card mente" },
+          el("div", { class: "topo" }, boneco(c.sprite), el("div", {}, el("b", { text: c.nome }), el("div", { class: "muted", style: "font-size:12px", text: "" }))),
+          canvas, dica);
+        t = { nome: c.nome, card, canvas, dica, c };
+        canvas.addEventListener("mousemove", (ev) => passar(t, ev));
+        canvas.addEventListener("mouseleave", () => (t.dica.hidden = true));
+      }
+      t.c = c;
+      const m = c.mente;
+      t.card.querySelector(".topo .muted").textContent = m.pontos.length + " lembranças · " + (m.bytes / 1024).toFixed(1) + " KB · " + c.personalidade + (m.integra ? "" : " · ⚠ livro-razão adulterado");
+      t.card.querySelector(".topo img").src = svgUrl(c.sprite);
+      return t;
+    });
+    box.replaceChildren(...telas.map((t) => t.card));
+    // Sem animação (o sistema pediu menos movimento), pinta parado; senão o giro pinta.
+    if (reduz) for (const t of telas) pintarMente(t);
+  }
+  function posicoes(t) {
+    const W = t.canvas.width, n = t.c.mente.pontos.length;
+    const R = (W / 2 - 12) * (0.42 + 0.58 * Math.min(1, n / 120));
+    const a = reduz ? 0 : angulo, cs = Math.cos(a), sn = Math.sin(a);
+    return { R, pts: t.c.mente.pontos.map((p) => ({ x: W / 2 + R * (p.x * cs - p.y * sn), y: W / 2 + R * (p.x * sn + p.y * cs), p })) };
+  }
+  function pintarMente(t) {
+    const g = t.canvas.getContext("2d"), W = t.canvas.width;
+    const { R, pts } = posicoes(t);
+    g.clearRect(0, 0, W, W);
+    const ink = getComputedStyle(document.body).color;
+    g.strokeStyle = ink; g.globalAlpha = 0.25; g.lineWidth = 2;
+    g.beginPath(); g.arc(W / 2, W / 2, R + 6, 0, Math.PI * 2); g.stroke();
+    g.globalAlpha = 1;
+    for (const [i, j, s] of t.c.mente.ligacoes) {
+      const a = pts[i], b = pts[j];
+      if (!a || !b) continue;
+      g.strokeStyle = cores[a.p.c]; g.globalAlpha = Math.min(0.7, 0.15 + s * 0.6); g.lineWidth = 1.2;
+      g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke();
+    }
+    g.globalAlpha = 1;
+    for (const q of pts) {
+      g.fillStyle = cores[q.p.c];
+      g.beginPath(); g.arc(q.x, q.y, q.p.c === "criacoes" ? 6 : 4.5, 0, Math.PI * 2); g.fill();
+    }
+    // O centro: quem ele é (a ficha).
+    g.fillStyle = ink; g.beginPath(); g.arc(W / 2, W / 2, 7, 0, Math.PI * 2); g.fill();
+  }
+  function passar(t, ev) {
+    const r = t.canvas.getBoundingClientRect(), k = t.canvas.width / r.width;
+    const x = (ev.clientX - r.left) * k, y = (ev.clientY - r.top) * k;
+    const W = t.canvas.width;
+    if (Math.hypot(x - W / 2, y - W / 2) < 14) {
+      t.dica.textContent = t.c.mente.ficha || t.c.mente.perfil || t.c.nome;
+      t.dica.hidden = false; return;
+    }
+    let melhor = null, dist = 18 * k;
+    for (const q of posicoes(t).pts) { const dd = Math.hypot(q.x - x, q.y - y); if (dd < dist) { dist = dd; melhor = q; } }
+    if (melhor) { t.dica.textContent = melhor.p.c + ": " + melhor.p.t; t.dica.hidden = false; } else t.dica.hidden = true;
+  }
+  function girar() {
+    if (vista === "mentes" && !document.hidden) {
+      angulo += 0.0025;
+      for (const t of telas) pintarMente(t);
+    }
+    requestAnimationFrame(girar);
+  }
+  if (!reduz) requestAnimationFrame(girar);
+
+  // ---------- Conversa ----------
+  let ultimaN = -1;
+  function conversa() {
+    const d = dados, corvos = porNome();
+    const box = $("#conversa"), fios = $("#fios");
+    const embaixo = innerHeight + scrollY >= document.body.scrollHeight - 80;
+    const ultima = d.conversa.length ? d.conversa[d.conversa.length - 1].n : -1;
+    if (ultima === ultimaN && box.children.length > 1) return;
+    ultimaN = ultima;
+    const porN = Object.fromEntries(d.conversa.map((l) => [l.n, l]));
+    const linhas = d.conversa.map((l) => {
+      const marca = el("span", { class: "marca", style: "color:" + l.cor, text: l.forma + l.n });
+      if (l.quem === "Cartório") {
+        return el("div", { class: "fala mundo", "data-n": l.n }, el("div", {}, marca, " ", el("span", { text: "📜 " + l.texto })));
+      }
+      const c = corvos[l.quem];
+      const dono = l.quem === "Você";
+      const sprite = dono ? d.dono_sprite : c ? c.sprite : null;
+      const alvo = l.responde != null ? porN[l.responde] : null;
+      return el("div", { class: "fala" + (dono ? " dono" : ""), "data-n": l.n },
+        sprite ? boneco(sprite, "boneco") : el("div", { class: "boneco" }),
+        el("div", {},
+          el("div", { class: "quem" },
+            el("b", { text: dono ? "Você (dono)" : l.quem }), marca,
+            alvo ? el("span", { class: "resp" }, "↳ ", el("span", { class: "marca", style: "color:" + alvo.cor, text: alvo.forma + alvo.n }), " " + alvo.quem) : null,
+            l.modelo ? el("span", { class: "muted", style: "font-size:12px", text: l.modelo }) : null),
+          el("p", { text: l.texto })));
+    });
+    box.replaceChildren(fios, ...linhas);
+    if (!linhas.length) box.append(el("div", { class: "vazio", text: "Ainda ninguém falou. Rode no terminal: dotcrow civ conversar" }));
+    requestAnimationFrame(() => {
+      // As linhas: da resposta até a fala respondida, na cor e com a forma da marca dela.
+      const ns = "http://www.w3.org/2000/svg";
+      fios.replaceChildren();
+      fios.setAttribute("height", box.scrollHeight);
+      const pos = {};
+      for (const n of box.querySelectorAll(".fala")) pos[n.dataset.n] = n.offsetTop + Math.min(28, n.offsetHeight / 2);
+      let faixa = 0;
+      for (const l of d.conversa) {
+        if (l.responde == null || pos[l.responde] == null || pos[l.n] == null) continue;
+        const alvo = porN[l.responde];
+        const x = 6 + (faixa++ % 5) * 7, y1 = pos[l.n], y2 = pos[l.responde];
+        const p = document.createElementNS(ns, "path");
+        p.setAttribute("d", "M44 " + y1 + " H" + (x + 6) + " Q" + x + " " + y1 + " " + x + " " + (y1 - 6) + " V" + (y2 + 6) + " Q" + x + " " + y2 + " " + (x + 6) + " " + y2 + " H44");
+        p.setAttribute("fill", "none"); p.setAttribute("stroke", alvo.cor); p.setAttribute("stroke-width", "1.6"); p.setAttribute("opacity", "0.8");
+        fios.append(p);
+        const f = document.createElementNS(ns, "text");
+        f.setAttribute("x", "38"); f.setAttribute("y", y1 + 4); f.setAttribute("fill", alvo.cor); f.setAttribute("font-size", "11");
+        f.textContent = alvo.forma;
+        fios.append(f);
+      }
+      if (embaixo) scrollTo(0, document.body.scrollHeight);
+    });
+  }
+
+  function desenhar() {
+    chips();
+    if (vista === "terrenos") terrenos();
+    else if (vista === "mentes") mentes();
+    else conversa();
+  }
+
+  trocarVista();
+  carregar().then((ok) => { if (ok) setInterval(carregar, 2500); });
+})();
+</script>
+</body>
+</html>

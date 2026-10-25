@@ -54,6 +54,8 @@ use crate::{
     treino::{self, Consentimento, Sessao},
 };
 
+mod civ;
+
 const INDEX_HTML: &str = include_str!("index.html");
 const MARK_SVG: &str = include_str!("../../../../assets/brand/dotcrow-mark-dark.svg");
 const FAVICON_SVG: &str = include_str!("../../../../assets/brand/dotcrow-favicon.svg");
@@ -347,6 +349,8 @@ fn svg(body: &'static str) -> Response {
 fn app(state: Shared) -> axum::Router {
     axum::Router::new()
         .route("/", get(|| async { Html(INDEX_HTML) }))
+        .route("/civ", get(|| async { Html(civ::CIV_HTML) }))
+        .route("/api/civ", get(civ::estado))
         .route("/marca.svg", get(|| async { svg(MARK_SVG) }))
         .route("/favicon.svg", get(|| async { svg(FAVICON_SVG) }))
         .route("/icone.svg", get(|| async { svg(APP_ICON_SVG) }))
