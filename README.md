@@ -118,7 +118,7 @@ dotcrow tarefa "escreva um e-mail avisando que a entrega atrasou dois dias"
 dotcrow perguntar "o que é um corvo, em uma frase?"            # resposta direta
 dotcrow provedores                                             # ordem e modelos
 dotcrow agentes                                                # conheça os corvos
-dotcrow civilizacao                                            # os 10 corvos da civilização (v2)
+dotcrow civ conversar                                          # os 10 corvos da civilização conversam (v2)
 dotcrow demo troca                                             # veja a troca automática de provedor
 ```
 
@@ -163,11 +163,15 @@ Mais em [docs/agentes.md](docs/agentes.md).
 Além do bando de tarefas, o DotCrow está ganhando uma **civilização de 10 corvos** que nascem, competem, morrem e evoluem. Cada corvo tem um **genoma** (personalidade, especialidade, geração) e **um modelo de LLM próprio** — você escolhe qual, um por um, e pode trocar quando quiser.
 
 ```bash
-dotcrow civilizacao                 # a Gênese: 10 corvos novos, desenhados no terminal
-dotcrow civ --compacto              # uma linha por corvo (bom no Termux)
-dotcrow civ --semente 7             # repete exatamente a mesma geração
-dotcrow civ --modelos openai:gpt-5-nano,anthropic:claude-haiku-5-5   # troca os modelos
+dotcrow civ                         # mostra o bando (é sempre o mesmo: fica salvo)
+dotcrow civ conversar               # os 10 corvos conversam de verdade; você entra na conversa
+dotcrow civ conversar --tema música --intervalo 30   # com tema e uma fala a cada 30 s
+dotcrow civ modelo Nyx anthropic:claude-haiku-5-5    # troca o modelo de um corvo
+dotcrow civ --modelos openai:gpt-5-nano,anthropic:claude-haiku-5-5   # troca o rodízio de todos
+dotcrow civ nova                    # nova Gênese: 10 corvos novos
 ```
+
+Na conversa, cada corvo fala com **o próprio modelo**, do seu jeito (personalidade e especialidade), respondendo ao que os outros disseram. **Escreva e aperte Enter** para falar com o bando; chame um corvo pelo nome (`Nyx, o que você acha?`) para ele responder; Enter vazio pede a próxima fala na hora; **`pare`** (ou Ctrl+C) encerra. Dentro do modo terminal, é só digitar **`/civ`** (ou `/civ música` para dar um tema). Se o modelo de um corvo falhar ou recusar, ele fala com o modelo do outro provedor.
 
 ```
 Sombra  ★ 6.8 [online]  · gpt-5-nano        · organização
@@ -186,6 +190,7 @@ Conexões externas de hoje: Zéfiro · 3   Morrigana · 2   Sombra · 1
 | Fase | O que entra | Estado |
 |---|---|---|
 | 1 | Motor da civilização: Gênese, genoma, desenho, ranking, ciclo de morte/nascimento, RAG por dia, modelo por corvo | ✅ no código |
+| 1.5 | Conversa de verdade entre os 10 corvos (cada um com o seu modelo) e com você, bando salvo, modelo por corvo | ✅ no código |
 | 2 | Muralha (anonimização antes de qualquer LLM) e Alfândega (Opus triando tudo que vem de fora) | 🟡 próxima |
 | 3 | Conselho com voto (>60%), notas 10/5 do usuário, avaliador por amostragem a cada ~100 mensagens | 🟡 |
 | 4 | Estado salvo entre sessões, alma exportável, Modo Dispositivo e painel estilo WhatsApp | 🟡 |
@@ -204,7 +209,7 @@ Conexões externas de hoje: Zéfiro · 3   Morrigana · 2   Sombra · 1
 | Conversa ao vivo e o Vigia mandando refazer | ✅ |
 | Modo treinamento (vira memória/RAG), com consentimento | ✅ |
 | Cofre de chaves cifrado + envelope pós-quântico (**não auditado**) | ✅ |
-| Civilização dos Corvos v2, Fase 1: 10 corvos com genoma, modelo próprio, ranking e ciclo de vida (`dotcrow civ`) | ✅ |
+| Civilização dos Corvos v2: 10 corvos com genoma e modelo próprio, conversando entre si e com você (`dotcrow civ conversar` ou `/civ`) | ✅ |
 | WhatsApp, app nativo e marketplace de RAGs | 🟡 a caminho — veja o [ROADMAP](ROADMAP.md) |
 
 ## 🤝 Quero ajudar
