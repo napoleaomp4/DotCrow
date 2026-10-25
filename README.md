@@ -23,6 +23,7 @@
   <a href="#-comece-em-2-minutos">Começar</a> ·
   <a href="#-o-que-ele-faz">O que faz</a> ·
   <a href="#-os-corvos">Os corvos</a> ·
+  <a href="#-a-civiliza%C3%A7%C3%A3o-dos-corvos-v2">Civilização</a> ·
   <a href="#-quero-ajudar">Contribuir</a> ·
   <a href="docs/arquitetura.md">Arquitetura</a> ·
   <a href="README.en.md">English</a>
@@ -117,6 +118,7 @@ dotcrow tarefa "escreva um e-mail avisando que a entrega atrasou dois dias"
 dotcrow perguntar "o que é um corvo, em uma frase?"            # resposta direta
 dotcrow provedores                                             # ordem e modelos
 dotcrow agentes                                                # conheça os corvos
+dotcrow civilizacao                                            # os 10 corvos da civilização (v2)
 dotcrow demo troca                                             # veja a troca automática de provedor
 ```
 
@@ -156,6 +158,38 @@ flowchart LR
 
 Mais em [docs/agentes.md](docs/agentes.md).
 
+## 🧬 A Civilização dos Corvos (v2)
+
+Além do bando de tarefas, o DotCrow está ganhando uma **civilização de 10 corvos** que nascem, competem, morrem e evoluem. Cada corvo tem um **genoma** (personalidade, especialidade, geração) e **um modelo de LLM próprio** — você escolhe qual, um por um, e pode trocar quando quiser.
+
+```bash
+dotcrow civilizacao                 # a Gênese: 10 corvos novos, desenhados no terminal
+dotcrow civ --compacto              # uma linha por corvo (bom no Termux)
+dotcrow civ --semente 7             # repete exatamente a mesma geração
+dotcrow civ --modelos openai:gpt-5-nano,anthropic:claude-haiku-5-5   # troca os modelos
+```
+
+```
+Sombra  ★ 6.8 [online]  · gpt-5-nano        · organização
+Nyx     ★ 5.4 [online]  · claude-haiku-5-5  · memória
+Zéfiro  ★ 6.8 [online]  · claude-haiku-5-5  · pesquisa
+...
+Conexões externas de hoje: Zéfiro · 3   Morrigana · 2   Sombra · 1
+```
+
+- 🌱 **Gênese:** 10 corvos, metade em `gpt-5-nano` e metade em `claude-haiku-5-5` por padrão (os modelos baratos). O **Opus 5.5 não entra no bando**: fica nos pontos de controle (Guardião, triagem e refino).
+- 🎨 **Cada corvo é desenhado a partir do genoma:** a cor vem do provedor, o símbolo no peito vem da especialidade, as estrelas vêm da reputação.
+- 🌐 **Internet só para os 3 melhores do dia:** 3 conexões para o 1º, 2 para o 2º, 1 para o 3º. Do 4º para baixo, ficam na Sandbox.
+- 💀 **Ciclo de vida:** a cada ciclo os 5 piores morrem e vão para o **Livro dos Mortos** com a lição que deixaram; nascem 5 novos por cruzamento e mutação dos sobreviventes.
+- 🧠 **Memória que cresce:** cada corvo nasce com **0,1 MB** de RAG e ganha **+1 MB por dia sobrevivido** (mais rápido quanto melhor a reputação). Essa memória é a **alma** do corvo — a ideia é poder exportá-la para outra simulação.
+
+| Fase | O que entra | Estado |
+|---|---|---|
+| 1 | Motor da civilização: Gênese, genoma, desenho, ranking, ciclo de morte/nascimento, RAG por dia, modelo por corvo | ✅ no código |
+| 2 | Muralha (anonimização antes de qualquer LLM) e Alfândega (Opus triando tudo que vem de fora) | 🟡 próxima |
+| 3 | Conselho com voto (>60%), notas 10/5 do usuário, avaliador por amostragem a cada ~100 mensagens | 🟡 |
+| 4 | Estado salvo entre sessões, alma exportável, Modo Dispositivo e painel estilo WhatsApp | 🟡 |
+
 ## 🧩 O que já funciona
 
 | Parte | Estado |
@@ -170,6 +204,7 @@ Mais em [docs/agentes.md](docs/agentes.md).
 | Conversa ao vivo e o Vigia mandando refazer | ✅ |
 | Modo treinamento (vira memória/RAG), com consentimento | ✅ |
 | Cofre de chaves cifrado + envelope pós-quântico (**não auditado**) | ✅ |
+| Civilização dos Corvos v2, Fase 1: 10 corvos com genoma, modelo próprio, ranking e ciclo de vida (`dotcrow civ`) | ✅ |
 | WhatsApp, app nativo e marketplace de RAGs | 🟡 a caminho — veja o [ROADMAP](ROADMAP.md) |
 
 ## 🤝 Quero ajudar
@@ -190,7 +225,7 @@ crates/
   dotcrow-crypto/      envelope híbrido pós-quântico e cifra simétrica
   dotcrow-vault/       cofre de chaves de API (só escreve, nunca mostra)
   dotcrow-providers/   adaptadores de LLM + roteador com troca automática
-  dotcrow-agents/      os seis corvos, o fluxo e o orquestrador
+  dotcrow-agents/      os seis corvos, o fluxo, o orquestrador e a civilização dos 10 corvos
   dotcrow-cli/         o comando dotcrow, o painel e o túnel remoto
   dotcrow-relay/       o relay do túnel (roda na nuvem; só repassa bytes)
 docs/                  arquitetura, agentes, segurança, painel e API, remoto
