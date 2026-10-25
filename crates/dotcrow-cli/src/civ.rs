@@ -13,7 +13,7 @@
 //! de cada corvo (com livro-razão por hash) e a alma dos que morreram. Sobrevive a
 //! desligar o celular.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -27,7 +27,9 @@ use dotcrow_providers::{CompletionRequest, LlmProvider, Message, Role, Tier, cat
 use serde::{Deserialize, Serialize};
 
 use crate::Paint;
+use crate::civ_economia::{self, Evento};
 use crate::civ_memoria::{self, Memoria, agora};
+use crate::civ_visual::{self, Linha};
 use crate::store::Store;
 
 /// Modelos padrão dos corvos: metade em cada um (os mais baratos de cada provedor).
@@ -82,6 +84,15 @@ pub struct Estado {
     /// julgamento nem missão e o relógio das 24 h para; o DotCrow segue com os 6 corvos.
     #[serde(default)]
     pub pausada_desde: Option<u64>,
+    /// A economia: dotcoins, energia, comida, sementes, terrenos, contratos e mercado.
+    #[serde(default)]
+    pub economia: civ_economia::Economia,
+    /// Quantas falas já entraram no registro da conversa (a marca de cada uma sai daqui).
+    #[serde(default)]
+    pub marcas: u64,
+    /// Quantas falas cada corvo vivo já fez (para saber quando refletir).
+    #[serde(default)]
+    pub falas_de: BTreeMap<String, u64>,
 }
 
 impl Estado {
@@ -133,7 +144,62 @@ impl Estado {
         self.notas.remove(nome);
         self.avaliacoes.remove(nome);
         self.notas_pendentes.remove(nome);
+        self.falas_de.remove(nome);
     }
+
+    /// Os nomes dos corvos vivos.
+    pub fn vivos(&self) -> Vec<String> {
+        self.populacao.as_ref().map(|c| c.corvos.iter().map(|c| c.nome.clone()).collect()).unwrap_or_default()
+    }
+
+    /// O número da próxima fala do registro.
+    pub fn proxima_marca(&mut self) -> u64 {
+        self.marcas += 1;
+        self.marcas
+    }
+
+    fn rag_de(&self, nome: &str) -> f32 {
+        self.populacao
+            .as_ref()
+            .and_then(|c| c.corvos.iter().find(|c| c.nome == nome))
+            .map(|c| c.rag_mb)
+            .unwrap_or(RAG_INICIAL)
+    }
+}
+
+/// Os acontecimentos do mundo (economia, nascimentos, mortes) entram no registro da
+/// conversa como falas do Cartório e no livro-razão de quem participou.
+pub(crate) fn anotar_mundo(pasta: &Path, e: &mut Estado, eventos: &[Evento]) -> Vec<Linha> {
+    let mut out = Vec::new();
+    for ev in eventos {
+        let l = Linha {
+            n: e.proxima_marca(),
+            quem: conversa::MUNDO.to_string(),
+            texto: ev.texto.clone(),
+            quando: agora(),
+            responde: None,
+            modelo: String::new(),
+        };
+        let _ = civ_visual::anotar(pasta, &l);
+        for nome in &ev.envolvidos {
+            if !e.vivos().contains(nome) {
+                continue;
+            }
+            let mut m = Memoria::abrir(pasta, nome);
+            m.registrar("economia", &ev.texto);
+            let _ = m.salvar(pasta, e.rag_de(nome));
+        }
+        out.push(l);
+    }
+    out
+}
+
+/// Garante a bolsa de cada vivo (quem nasce ganha dotcoins e energia; a cada 2
+/// nascimentos surge um terreno) e anota o que aconteceu.
+fn garantir_economia(pasta: &Path, e: &mut Estado) -> Vec<Linha> {
+    let vivos = e.vivos();
+    let ev = e.economia.garantir(&vivos, &mut Rng::new(relogio()));
+    anotar_mundo(pasta, e, &ev)
 }
 
 /// Reputação depois das notas: a média entre a reputação de nascença e cada nota dada
@@ -234,11 +300,17 @@ pub fn ler_modelos(texto: &str) -> Result<Vec<Modelo>> {
     Ok(modelos)
 }
 
+/// A pasta que a Civilização enxerga: `Downloads/DotCrow` (a civilização, as missões, as
+/// entregas, os áudios e a pasta temporária ficam aqui dentro).
+pub fn raiz_da_sandbox() -> PathBuf {
+    crate::maos::pasta_de_downloads().join("DotCrow")
+}
+
 /// A pasta da civilização: `Downloads/DotCrow/civilizacao` (no Termux, a Download do
 /// celular quando o dono rodou `termux-setup-storage`). Se não der para criar lá, usa a
 /// pasta de dados do DotCrow. Traz o arquivo das versões antigas, se houver.
 pub fn pasta(dados: &Path) -> PathBuf {
-    let alvo = crate::maos::pasta_de_downloads().join("DotCrow").join("civilizacao");
+    let alvo = raiz_da_sandbox().join("civilizacao");
     let p = if std::fs::create_dir_all(&alvo).is_ok() { alvo } else { dados.join("civilizacao") };
     let antigo = dados.join(ARQUIVO);
     if antigo.exists() && !p.join(ARQUIVO).exists() {
@@ -255,13 +327,22 @@ fn caminho(pasta: &Path) -> PathBuf {
 /// Grava o estado da civilização.
 pub fn salvar(pasta: &Path, e: &Estado) -> Result<()> {
     std::fs::create_dir_all(pasta).with_context(|| format!("criando {}", pasta.display()))?;
-    std::fs::write(caminho(pasta), serde_json::to_vec_pretty(e)?).context("salvando a civilização")?;
+    // Grava num temporário e troca: quem lê ao mesmo tempo (o painel) nunca vê meio arquivo.
+    let tmp = pasta.join(format!("{ARQUIVO}.tmp"));
+    std::fs::write(&tmp, serde_json::to_vec_pretty(e)?).context("salvando a civilização")?;
+    std::fs::rename(&tmp, caminho(pasta)).context("salvando a civilização")?;
     Ok(())
 }
 
 fn carregar(pasta: &Path) -> Option<Estado> {
     let bytes = std::fs::read(caminho(pasta)).ok()?;
     serde_json::from_slice(&bytes).ok()
+}
+
+/// Só lê o estado salvo, sem mudar nada (para o painel, enquanto a conversa roda em
+/// outro processo).
+pub fn ler(pasta: &Path) -> Option<Estado> {
+    carregar(pasta)
 }
 
 /// Carrega o bando salvo (ou faz a Gênese na primeira vez). `semente` faz uma Gênese
@@ -289,6 +370,9 @@ pub fn abrir(pasta: &Path, semente: Option<u64>, modelos: Option<&str>) -> Resul
     }
     if e.populacao.is_none() {
         e.populacao = Some(e.base()?);
+        mudou = true;
+    }
+    if !garantir_economia(pasta, &mut e).is_empty() {
         mudou = true;
     }
     if mudou {
@@ -332,11 +416,66 @@ pub fn cumprir_prazos(pasta: &Path, e: &mut Estado) -> Result<Vec<String>> {
         m.registrar("geracao", &format!("nasceu na geração {geracao}"));
         let _ = m.salvar(pasta, RAG_INICIAL);
     }
-    salvar(pasta, e)?;
-    Ok(vec![
+    let mut msgs = vec![
         format!("⚰ Deixaram de existir: {}.", vencidos.join(", ")),
         format!("🐣 Nasceram (geração {geracao}): {}.", nascidos.join(", ")),
-    ])
+    ];
+    msgs.extend(garantir_economia(pasta, e).into_iter().map(|l| l.texto));
+    salvar(pasta, e)?;
+    Ok(msgs)
+}
+
+/// O relógio da economia (só com a civilização ativa): a energia cai, quem chegou a 50%
+/// dorme e come, e quem não tinha comida morre de fome e dá lugar a um corvo novo.
+/// Devolve os acontecimentos (já anotados) e se a população mudou.
+pub fn passo_da_economia(pasta: &Path, e: &mut Estado) -> Result<(Vec<Linha>, bool)> {
+    if e.pausada_desde.is_some() {
+        return Ok((Vec::new(), false));
+    }
+    let t = agora();
+    let mut ev = e.economia.tick(t);
+    let (sono, famintos) = e.economia.sono(t);
+    ev.extend(sono);
+    let mut linhas = anotar_mundo(pasta, e, &ev);
+    if famintos.is_empty() {
+        return Ok((linhas, false));
+    }
+    let efetiva = e.civilizacao()?;
+    let modelos = ler_modelos(&e.modelos.join(","))?;
+    let pop = e.populacao_mut()?;
+    for c in &mut pop.corvos {
+        if let Some(ef) = efetiva.corvos.iter().find(|x| x.nome == c.nome) {
+            c.reputacao = ef.reputacao;
+        }
+    }
+    let nascidos = pop.substituir_por(&famintos, &modelos, relogio(), |m| {
+        format!(
+            "corvo {} de {} morreu de fome: dormiu com 50% de energia e não tinha comida (reputação {:.1})",
+            m.genoma.personalidade.nome(),
+            m.genoma.especialidade.nome(),
+            m.reputacao
+        )
+    });
+    let geracao = pop.geracao;
+    let mut ev = Vec::new();
+    for nome in &famintos {
+        let _ = Memoria::abrir(pasta, nome).enterrar(pasta, "morreu de fome: dormiu com 50% de energia sem comida");
+        e.esquecer(nome);
+        ev.extend(e.economia.morrer(nome));
+    }
+    for nome in &nascidos {
+        let mut m = Memoria::abrir(pasta, nome);
+        m.registrar("geracao", &format!("nasceu na geração {geracao}, no lugar de quem morreu de fome"));
+        let _ = m.salvar(pasta, RAG_INICIAL);
+    }
+    ev.push(Evento {
+        texto: format!("🐣 Nasceram (geração {geracao}): {}.", nascidos.join(", ")),
+        envolvidos: Vec::new(),
+    });
+    linhas.extend(anotar_mundo(pasta, e, &ev));
+    linhas.extend(garantir_economia(pasta, e));
+    salvar(pasta, e)?;
+    Ok((linhas, true))
 }
 
 /// Abre o bando, cumpre os prazos vencidos e mostra o que aconteceu.
@@ -395,6 +534,8 @@ pub fn pausar(pasta: &Path, e: &mut Estado) -> Result<bool> {
 pub fn retomar(pasta: &Path, e: &mut Estado) -> Result<Option<u64>> {
     let Some(desde) = e.pausada_desde.take() else { return Ok(None) };
     let parada = agora().saturating_sub(desde);
+    // O tempo parado não gasta energia.
+    e.economia.ultimo_tick = 0;
     for c in &mut e.populacao_mut()?.corvos {
         if let Some(t) = c.condenado_ate.as_mut() {
             *t += parada;
@@ -454,16 +595,23 @@ com os 6 corvos. Retome com: dotcrow civ retomar",
             Some(t) => p.red(&format!("⚰ deixa de existir em {}", quanto_falta(t))),
             None => String::new(),
         };
+        let bolsa = e
+            .economia
+            .bolsas
+            .get(&c.nome)
+            .map(|b| format!(" · ⚡{:.0}% · 💰{} · 🍞{}", b.energia, b.dotcoins, b.comida))
+            .unwrap_or_default();
         println!(
             "   {:>2}º {} {}  {}",
             i + 1,
             p.bold(&c.nome),
-            p.dim(&format!("★ {:.1} · {:.1} MB · 🔎 {} consulta(s)", c.reputacao, c.rag_mb, c.consultas)),
+            p.dim(&format!("★ {:.1} · {:.1} MB · 🔎 {}{bolsa}", c.reputacao, c.rag_mb, c.consultas)),
             destino
         );
     }
     println!();
     println!("  {}", p.bold("Conversar:            dotcrow civ conversar"));
+    println!("  {}", p.bold("Terrenos e economia:  dotcrow civ terrenos"));
     println!("  {}", p.bold("Julgamento:           dotcrow civ julgar"));
     println!("  {}", p.dim("Dar nota (0 a 10):    dotcrow civ nota <corvo> <nota>  ·  todas: dotcrow civ avaliar"));
     println!("  {}", p.dim("Internet:             dotcrow civ pesquisar [corvo] [termo]"));
@@ -474,7 +622,8 @@ com os 6 corvos. Retome com: dotcrow civ retomar",
     Ok(())
 }
 
-/// Mostra a memória de um corvo e confere o livro-razão.
+/// Mostra a memória de um corvo (a pasta dele, a ficha, os artefatos, o que tem) e
+/// confere o livro-razão.
 pub fn mostrar_memoria(pasta: &Path, e: &Estado, corvo: &str, p: &Paint) -> Result<()> {
     let civ = e.civilizacao()?;
     let i = conversa::citado(&civ, corvo, None).with_context(|| format!("não achei o corvo \"{corvo}\""))?;
@@ -494,15 +643,46 @@ pub fn mostrar_memoria(pasta: &Path, e: &Estado, corvo: &str, p: &Paint) -> Resu
             c.consultas
         ))
     );
-    println!("  {}", p.dim(&format!("Arquivo: {}", civ_memoria::arquivo(pasta, &c.nome).display())));
     println!(
-        "  {} falas · {} perguntas respondidas · {} aprendizados · livro-razão com {} lançamentos {}",
+        "  {}",
+        p.dim(&format!(
+            "Pasta: {} (memoria.json · rag.json · livro-razao.json · ficha.json · artefatos/)",
+            civ_memoria::pasta_do_corvo(pasta, &c.nome).display()
+        ))
+    );
+    if let Some(b) = e.economia.bolsas.get(&c.nome) {
+        let terrenos: Vec<&str> = e
+            .economia
+            .terrenos
+            .iter()
+            .filter(|t| t.dono.as_deref() == Some(c.nome.as_str()))
+            .map(|t| t.id.as_str())
+            .collect();
+        println!(
+            "  ⚡ {:.0}% · 💰 {} dotcoins · 🍞 {} comida(s) · 🌰 {} semente(s) · 🗺 {}",
+            b.energia,
+            b.dotcoins,
+            b.comida,
+            b.sementes,
+            if terrenos.is_empty() { "sem terreno".to_string() } else { terrenos.join(", ") }
+        );
+    }
+    if !m.ficha.perfil.is_empty() || !m.ficha.resumo.is_empty() {
+        println!("  {} {}", p.bold("Ficha:"), p.dim(format!("{} {}", m.ficha.perfil, m.ficha.resumo).trim()));
+    }
+    println!(
+        "  {} falas · {} perguntas respondidas · {} aprendizados · {} lições · livro-razão com {} lançamentos {}",
         m.falas.len(),
         m.vinculos.len(),
         m.aprendizados.len(),
+        m.licoes.len(),
         m.livro_razao.len(),
         if m.integra() { p.green("✓ íntegro") } else { p.red("✗ ADULTERADO") }
     );
+    let artefatos = civ_memoria::artefatos(pasta, &c.nome);
+    if !artefatos.is_empty() {
+        println!("  {} {}", p.bold("Artefatos:"), artefatos.join(", "));
+    }
     for a in m.aprendizados.iter().rev().take(3) {
         println!("   🔎 {} — {}", p.bold(&a.titulo), p.dim(&a.texto.chars().take(140).collect::<String>()));
     }
@@ -519,6 +699,98 @@ pub fn mostrar_memoria(pasta: &Path, e: &Estado, corvo: &str, p: &Paint) -> Resu
     }
     println!();
     Ok(())
+}
+
+fn celula(texto: &str, largura: usize) -> String {
+    let t: String = texto.chars().take(largura).collect();
+    let falta = largura.saturating_sub(t.chars().count());
+    format!("{t}{}", " ".repeat(falta))
+}
+
+/// O mapa dos terrenos (dono, plantio, colheita, quem está lá) e a economia de cada corvo.
+pub fn mostrar_terrenos(e: &Estado, p: &Paint) {
+    let eco = &e.economia;
+    let t = agora();
+    println!();
+    println!(
+        "  {}  {}",
+        p.bold("Os terrenos da Civilização"),
+        p.dim(&format!("{} m² · {} nascimentos (a cada 2, surge 1 m²)", eco.terrenos.len(), eco.nascimentos))
+    );
+    if eco.terrenos.is_empty() {
+        println!("  {}", p.dim("Ainda não há terrenos."));
+    }
+    const L: usize = 14;
+    let colunas = civ_economia::LARGURA_MAPA as usize;
+    for linha in eco.terrenos.chunks(colunas) {
+        let borda = |a: &str, b: &str, c: &str| format!("  {a}{}{c}", vec!["─".repeat(L); linha.len()].join(b));
+        println!("{}", borda("┌", "┬", "┐"));
+        let mut l1 = Vec::new();
+        let mut l2 = Vec::new();
+        let mut l3 = Vec::new();
+        for terreno in linha {
+            let dono = terreno.dono.clone().unwrap_or_else(|| "à venda".into());
+            l1.push(p.bold(&celula(&format!("{} {dono}", terreno.id), L)));
+            let estado = match &terreno.plantio {
+                None => p.dim(&celula(". vazio", L)),
+                Some(pl) if pl.pronto <= t => p.yellow(&celula("# pronto!", L)),
+                Some(pl) => p.green(&celula(&format!("* cresce {}s", pl.pronto - t), L)),
+            };
+            l2.push(estado);
+            let la: Vec<&str> = eco
+                .bolsas
+                .iter()
+                .filter(|(_, b)| b.local.as_deref() == Some(terreno.id.as_str()))
+                .map(|(n, _)| n.as_str())
+                .collect();
+            l3.push(p.cyan(&celula(&if la.is_empty() { String::new() } else { format!("@ {}", la.join(",")) }, L)));
+        }
+        println!("  │{}│", l1.join("│"));
+        println!("  │{}│", l2.join("│"));
+        println!("  │{}│", l3.join("│"));
+        println!("{}", borda("└", "┴", "┘"));
+    }
+    println!("  {}", p.dim(". vazio · * plantado (30 s até colher) · # pronto para colher · @ quem está lá"));
+    println!();
+    println!("  {}", p.bold("Bolsas"));
+    for (nome, b) in &eco.bolsas {
+        let dorme = if b.dormindo_ate.is_some_and(|x| x > t) { " 😴" } else { "" };
+        let fazendo = if b.fazendo.is_empty() { String::new() } else { format!(" · {}", b.fazendo) };
+        println!(
+            "   {} {}{dorme}",
+            p.bold(&celula(nome, 10)),
+            p.dim(&format!(
+                "⚡{:>3.0}% · 💰{:>4} · 🍞{:>2} · 🌰{:>2}{fazendo}",
+                b.energia, b.dotcoins, b.comida, b.sementes
+            ))
+        );
+    }
+    if let Some(m) = eco.mercado_aberto(t) {
+        println!("  {}", p.yellow(&format!("🔔 Mercado aberto por {} (mais {} s)", m.aberto_por, m.ate - t)));
+    }
+    if !eco.podio.is_empty() {
+        println!("  {}", p.dim(&format!("Pódio (abre o mercado): {}", eco.podio.join(", "))));
+    }
+    if !eco.ofertas.is_empty() {
+        println!("  {}", p.bold("Ofertas"));
+        for o in eco.ofertas.iter().rev().take(8) {
+            println!(
+                "   {} {} vende {} por {} {}",
+                o.id,
+                o.de,
+                o.item.nome(o.qtd),
+                o.preco,
+                o.para.as_deref().map(|x| format!("(para {x})")).unwrap_or_default()
+            );
+        }
+    }
+    if !eco.diario.is_empty() {
+        println!("  {}", p.bold("Últimos acontecimentos"));
+        for d in eco.diario.iter().rev().take(8) {
+            println!("   {}", p.dim(d));
+        }
+    }
+    println!();
 }
 
 /// Mostra o Livro dos Mortos.
@@ -703,28 +975,65 @@ pub struct Opcoes {
     pub tema: Option<String>,
 }
 
-/// O que o corvo sabe de si para esta fala: as lições dele, lembranças da memória (RAG,
-/// pelo significado quando há embeddings), consultas que ainda tem e se está condenado.
-fn contexto_do_corvo(corvo: &Corvo, mem: &Memoria, historico: &[Fala], vetor: Option<&[f32]>) -> String {
+/// A ficha fixa do corvo (quem ele é pelo genoma), escrita na primeira vez.
+pub(crate) fn garantir_ficha(mem: &mut Memoria, corvo: &Corvo) {
+    let g = &corvo.genoma;
+    let nascido = mem.livro_razao.first().map(|l| civ_memoria::data(l.quando)).unwrap_or_default();
+    let perfil = format!(
+        "{}: {} ({}), especialista em {}, geração {}, nascido em {nascido}.",
+        corvo.nome,
+        g.personalidade.nome(),
+        g.personalidade.jeito(),
+        g.especialidade.nome(),
+        g.geracao
+    );
+    if mem.ficha.perfil != perfil {
+        mem.ficha.perfil = perfil;
+    }
+}
+
+/// O que o corvo sabe de si para esta fala: a ficha, as lições, lembranças da memória
+/// (RAG, pelo significado), os artefatos, o que tem (economia), as consultas e se está
+/// condenado.
+fn contexto_do_corvo(
+    corvo: &Corvo,
+    mem: &Memoria,
+    historico: &[Fala],
+    vetor: Option<&[f32]>,
+    e: &Estado,
+    pasta: &Path,
+) -> String {
     let recente: String = historico.iter().rev().take(4).map(|f| f.texto.as_str()).collect::<Vec<_>>().join(" ");
     let mut s = String::new();
+    if !mem.ficha.resumo.is_empty() {
+        s.push_str(&format!("\n\nSua ficha (quem você é e o que já viveu, escrita por você):\n{}", mem.ficha.resumo));
+    }
     let licoes = mem.ultimas_licoes(5);
     if !licoes.is_empty() {
         s.push_str("\n\nSuas lições (o que você aprendeu para ser um agente melhor):\n- ");
         s.push_str(&licoes.join("\n- "));
     }
-    let lembrancas = mem.lembrancas(&recente, 3, vetor);
+    let lembrancas = mem.lembrancas(&recente, 6, vetor);
     if !lembrancas.is_empty() {
-        s.push_str("\n\nO que você lembra (sua memória própria):\n- ");
+        s.push_str("\n\nO que você lembra (sua memória própria, de conversas anteriores também):\n- ");
         s.push_str(&lembrancas.join("\n- "));
+    }
+    let artefatos = civ_memoria::artefatos(pasta, &corvo.nome);
+    if !artefatos.is_empty() {
+        s.push_str(&format!(
+            "\n\nSeus artefatos (na sua pasta; dá para vender ou dar): {}.",
+            artefatos.iter().take(10).cloned().collect::<Vec<_>>().join(", ")
+        ));
     }
     if corvo.consultas > 0 {
         s.push_str(&format!(
-            "\n\nVocê ganhou {} consulta(s) à internet. Para usar uma, escreva [PESQUISAR: termo] na sua fala, \
-sobre qualquer assunto que te interesse. O que vier passa pela Alfândega e entra na sua memória.",
+            "\n\nVocê ganhou {} consulta(s) à internet. Para usar uma, escreva [PESQUISAR: sua pergunta] na sua fala. \
+A mesma pergunta é procurada em vários buscadores e conta como UMA consulta, e só se trouxer algo novo. O que vier \
+passa pela Alfândega e entra na sua memória.",
             corvo.consultas
         ));
     }
+    s.push_str(&e.economia.situacao(&corvo.nome, agora(), corvo.consultas));
     if let Some(t) = corvo.condenado_ate {
         s.push_str(&format!(
             "\n\nVocê ficou entre os 5 últimos no julgamento e deixa de existir em {}.",
@@ -744,7 +1053,8 @@ pub(crate) async fn vetorizar(store: &Store, textos: &[String]) -> Option<Vec<Ve
     dotcrow_providers::openai::embeddings(keys.as_ref(), textos, 256).await.ok()
 }
 
-/// O corvo reflete sobre o que viveu e guarda lições para ser melhor (com embedding).
+/// O corvo reflete sobre o que viveu: guarda lições para ser melhor (com embedding) e
+/// reescreve a ficha, que vai com ele para as próximas conversas.
 pub(crate) async fn refletir(
     store: &Store,
     pasta: &Path,
@@ -753,28 +1063,36 @@ pub(crate) async fn refletir(
     civ: &Civilizacao,
     acontecimentos: &str,
 ) -> Result<Vec<String>> {
-    let mut mem = Memoria::abrir(pasta, &corvo.nome);
-    let antigas = mem.ultimas_licoes(5);
+    let antigas = Memoria::abrir(pasta, &corvo.nome).ultimas_licoes(5);
     let (texto, _, _) = pedir(
         voz,
         conversa::perfil(corvo, civ, None),
         conversa::pedido_reflexao(&corvo.nome, acontecimentos, &antigas),
-        900,
+        1400,
     )
     .await?;
     let licoes = conversa::ler_licoes(&texto);
     let vetores = vetorizar(store, &licoes).await;
+    // Abre de novo depois da espera: o que mudou nesse meio-tempo não se perde.
+    let mut mem = Memoria::abrir(pasta, &corvo.nome);
     mem.refletiu(&licoes, vetores);
+    if let Some(f) = conversa::ler_ficha(&texto) {
+        mem.atualizar_ficha(&f);
+        mem.registrar("ficha", "reescreveu a própria ficha");
+    }
+    garantir_ficha(&mut mem, corvo);
     mem.salvar(pasta, corvo.rag_mb)?;
     Ok(licoes)
 }
 
 /// O resumo do que aconteceu com o corvo, para ele refletir.
 pub(crate) fn acontecimentos(mem: &Memoria) -> String {
-    let falas: Vec<String> = mem.falas.iter().rev().take(6).map(|f| format!("- você disse: {}", f.texto)).collect();
+    let falas: Vec<String> = mem.falas.iter().rev().take(8).map(|f| format!("- você disse: {}", f.texto)).collect();
     let livro: Vec<String> =
-        mem.livro_razao.iter().rev().take(6).map(|l| format!("- {}: {}", l.tipo, l.descricao)).collect();
-    format!("{}\n{}", falas.join("\n"), livro.join("\n"))
+        mem.livro_razao.iter().rev().take(10).map(|l| format!("- {}: {}", l.tipo, l.descricao)).collect();
+    let ficha =
+        if mem.ficha.resumo.is_empty() { String::new() } else { format!("\nSua ficha atual: {}", mem.ficha.resumo) };
+    format!("{}\n{}{ficha}", falas.join("\n"), livro.join("\n"))
 }
 
 /// Lê uma linha do dono, ou `None` se ele fechou a entrada ou apertou Ctrl+C.
@@ -851,7 +1169,14 @@ fn cabecalho(civ: &Civilizacao, avisos: &[String], o: &Opcoes, p: &Paint) {
             o.intervalo.as_secs()
         ))
     );
-    println!("  {}", p.dim("Escreva e aperte Enter para falar com o bando. Chame pelo nome para um corvo responder."));
+    println!(
+        "  {}",
+        p.dim("Escreva e aperte Enter para falar com o bando. Chame pelo nome (\"Nyx, ...\") e é ele quem responde.")
+    );
+    println!(
+        "  {}",
+        p.dim("Cada fala tem uma marca (★12); ↳ mostra a qual fala ela responde. /terrenos mostra o mapa e as bolsas.")
+    );
     println!("  {}", p.dim("Enter vazio = próxima fala agora · pare = encerra · Ctrl+C também encerra."));
     println!(
         "  {}",
@@ -867,8 +1192,131 @@ fn cabecalho(civ: &Civilizacao, avisos: &[String], o: &Opcoes, p: &Paint) {
     println!();
 }
 
+/// Lê `[CRIAR: tipo | título]` (também `[CRIAR: tipo: título]`) da fala: o corvo cria um
+/// artefato (livro, música, poema, arte...) na pasta dele. Devolve a fala sem a tag e
+/// (tipo, título).
+pub fn extrair_criacao(texto: &str) -> (String, Option<(String, String)>) {
+    for (ini, _) in texto.match_indices('[') {
+        let resto = &texto[ini..];
+        let Some(fim) = resto.find(']') else { continue };
+        let Some((chave, args)) = resto[1..fim].split_once(':') else { continue };
+        if !matches!(conversa::normalizar(chave.trim()).as_str(), "criar" | "crio" | "escrever" | "compor") {
+            continue;
+        }
+        let (tipo, titulo) = match args.split_once(['|', ':']) {
+            Some((t, ti)) => (t.trim().to_string(), ti.trim().to_string()),
+            None => {
+                let a = args.trim();
+                match a.split_once(char::is_whitespace) {
+                    Some((t, ti)) => (t.to_string(), ti.trim().to_string()),
+                    None => ("texto".to_string(), a.to_string()),
+                }
+            }
+        };
+        let titulo = titulo.trim_matches(|c| c == '"' || c == '“' || c == '”' || c == '\'').to_string();
+        let limpo = format!("{}{}", &texto[..ini], &resto[fim + 1..]).split_whitespace().collect::<Vec<_>>().join(" ");
+        if titulo.is_empty() {
+            return (limpo, None);
+        }
+        return (limpo, Some((tipo.to_lowercase(), titulo)));
+    }
+    (texto.to_string(), None)
+}
+
+fn curto(s: &str, n: usize) -> String {
+    let t: String = s.split_whitespace().collect::<Vec<_>>().join(" ");
+    if t.chars().count() > n { format!("{}…", t.chars().take(n).collect::<String>()) } else { t }
+}
+
+/// Um corvo cria um artefato com uma chamada à parte (a obra não conta no limite de
+/// palavras da fala). Um por corvo a cada 5 minutos.
+async fn criar_artefato_do_corvo(
+    pasta: &Path,
+    voz: &Voz,
+    corvo: &Corvo,
+    civ: &Civilizacao,
+    tipo: &str,
+    titulo: &str,
+) -> Result<Evento> {
+    let t = agora();
+    if let Some(l) = Memoria::abrir(pasta, &corvo.nome).livro_razao.iter().rev().find(|l| l.tipo == "artefato")
+        && t < l.quando + 300
+    {
+        bail!("criou um artefato há pouco; o próximo em {} s", l.quando + 300 - t);
+    }
+    let n = conversa::normalizar(tipo);
+    let instrucao = if ["arte", "desenho", "pintura", "imagem", "ilustracao", "svg", "quadro"].contains(&n.as_str()) {
+        "Desenhe como um SVG de 256×256: só formas (rect, circle, ellipse, path, polygon, line, text), sem script \
+e sem imagens de fora. Responda só com o <svg>…</svg>."
+    } else if ["musica", "cancao", "samba", "rap", "hino", "letra"].contains(&n.as_str()) {
+        "Escreva a letra com a cifra dos acordes por cima dos versos e, se quiser, a melodia em notação ABC num bloco \
+```abc. Até 400 palavras."
+    } else {
+        "Escreva em Markdown, com começo, meio e fim. Até 600 palavras."
+    };
+    let (obra, _, _) = pedir(
+        voz,
+        conversa::perfil(corvo, civ, None),
+        format!(
+            "Você, {}, decidiu criar um(a) {tipo} chamado \"{titulo}\". {instrucao} Só a obra, sem comentários antes ou \
+depois.",
+            corvo.nome
+        ),
+        3200,
+    )
+    .await?;
+    if obra.trim().is_empty() {
+        bail!("a obra veio vazia");
+    }
+    let mut mem = Memoria::abrir(pasta, &corvo.nome);
+    let (caminho, hash) = mem.criar_artefato(pasta, tipo, titulo, &obra)?;
+    mem.salvar(pasta, corvo.rag_mb)?;
+    let arquivo = caminho.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    Ok(Evento {
+        texto: format!(
+            "📜 {} criou o {tipo} “{titulo}” ({arquivo} · sha256 {}…). Dá para vender ou dar: [VENDER: artefato {arquivo} por 20]",
+            corvo.nome,
+            &hash[..12]
+        ),
+        envolvidos: Vec::new(),
+    })
+}
+
+/// Um aviso do mundo na tela.
+fn mostrar_mundo(p: &Paint, l: &Linha) {
+    println!("  {} {}", p.dim(&format!("📜 {}", conversa::MUNDO)), p.dim(&l.texto));
+}
+
+/// A fala de um corvo na tela: o desenho dele, a marca, a quem responde e o texto.
+#[allow(clippy::too_many_arguments)]
+fn mostrar_fala(
+    e: &Estado,
+    corvo: &Corvo,
+    modelo: &Modelo,
+    l: &Linha,
+    recentes: &[Linha],
+    cores: civ_visual::Cores,
+    p: &Paint,
+) {
+    let sprite = civ_visual::sprite_do_corvo(corvo.genoma.semente, e.economia.podio.contains(&corvo.nome));
+    let resp = l
+        .responde
+        .and_then(|r| recentes.iter().find(|x| x.n == r))
+        .map(|r| format!(" ↳ {} {}", civ_visual::marca(r.n, cores), p.dim(&r.quem)))
+        .unwrap_or_default();
+    let energia = e.economia.bolsas.get(&corvo.nome).map(|b| format!(" · ⚡{:.0}%", b.energia)).unwrap_or_default();
+    let cabeca = format!(
+        "{} {}{resp} {}",
+        p.c256b(cor_provedor(&modelo.provedor), &corvo.nome),
+        civ_visual::marca(l.n, cores),
+        p.dim(&format!("· {} · {} palavra(s){energia}", modelo.modelo, l.texto.split_whitespace().count()))
+    );
+    println!("{}", civ_visual::bloco(Some(&sprite), &cabeca, &l.texto, cores));
+}
+
 /// Os corvos conversam até o dono dizer `pare` (ou Ctrl+C). `rx` traz as linhas que o
 /// dono digita (veja [`teclado_stdin`]; o modo terminal usa o próprio editor de linha).
+/// A conversa fica registrada em `conversa.jsonl` e é retomada na próxima vez.
 pub async fn conversar(
     store: &Store,
     pasta: &Path,
@@ -881,11 +1329,38 @@ pub async fn conversar(
     let mut estado = e.clone();
     let mut civ = estado.civilizacao()?;
     let (mut vozes, avisos) = vozes(store, &civ)?;
+    let cores = civ_visual::cores(p.on);
     cabecalho(&civ, &avisos, &o, p);
+    // O tempo com a civilização fechada não gasta energia.
+    estado.economia.ultimo_tick = 0;
 
     let mut rng = Rng::new(relogio());
     let mut ativacao = conversa::Ativacao::default();
-    let mut historico: Vec<Fala> = Vec::new();
+    // Retoma a conversa de onde parou (os corvos lembram do que estavam falando).
+    let mut recentes: Vec<Linha> = civ_visual::ultimas(pasta, 40);
+    let mut historico: Vec<Fala> = recentes.iter().map(|l| Fala::nova(&l.quem, &l.texto)).collect();
+    if let Some(ult) = recentes.iter().rev().find(|l| l.quem != conversa::MUNDO) {
+        println!(
+            "  {}",
+            p.dim(&format!("↺ Retomando a conversa de onde parou (última fala em {}):", civ_memoria::data(ult.quando)))
+        );
+        for l in
+            recentes.iter().rev().filter(|l| l.quem != conversa::MUNDO).take(3).collect::<Vec<_>>().into_iter().rev()
+        {
+            println!(
+                "    {}",
+                p.dim(&format!(
+                    "{} {}: {}",
+                    civ_visual::marca(l.n, civ_visual::Cores::Nenhuma),
+                    l.quem,
+                    curto(&l.texto, 110)
+                ))
+            );
+        }
+        println!();
+    }
+    // Quem o dono chamou pelo nome, na ordem, com a fala dele a que vão responder.
+    let mut fila: VecDeque<(String, u64)> = VecDeque::new();
     let mut falas: u32 = 0;
     let mut chamadas: u32 = 0;
     let mut erros_seguidos = 0;
@@ -894,8 +1369,14 @@ pub async fn conversar(
 
     'conversa: loop {
         if !agora_ja {
-            // Como neurônios: o tempo entre uma fala e outra não é fixo.
-            let espera = tokio::time::sleep(o.intervalo.mul_f32(rng.faixa(0.5, 1.5)));
+            // Como neurônios: o tempo entre uma fala e outra não é fixo. Com o mercado
+            // aberto, o bando fala mais rápido (é só 1 minuto).
+            let base = if estado.economia.mercado_aberto(agora()).is_some() {
+                o.intervalo.min(Duration::from_secs(6))
+            } else {
+                o.intervalo
+            };
+            let espera = tokio::time::sleep(base.mul_f32(rng.faixa(0.5, 1.5)));
             tokio::pin!(espera);
             loop {
                 tokio::select! {
@@ -926,6 +1407,7 @@ pub async fn conversar(
                                 Err(err) => println!("  {}", p.yellow(&format!("{err:#}"))),
                             }
                         }
+                        Some(l) if matches!(l.trim(), "/terrenos" | "/mapa" | "/economia") => mostrar_terrenos(&estado, p),
                         Some(l) if l.trim() == "/avaliar" => {
                             if let Err(err) = pedir_notas_do_dono(pasta, &mut estado, p, &mut rx).await {
                                 println!("  {}", p.yellow(&format!("{err:#}")));
@@ -937,6 +1419,7 @@ pub async fn conversar(
                                 println!("  {}", p.yellow(&format!("{err:#}")));
                             }
                             civ = estado.civilizacao()?;
+                            vozes = self::vozes(store, &civ)?.0;
                         }
                         Some(l) if crate::audio::gatilho(&l).is_some() => {
                             let contexto = crate::audio::gatilho(&l).unwrap_or_default();
@@ -981,7 +1464,29 @@ pub async fn conversar(
                             civ = estado.civilizacao()?;
                         }
                         Some(l) => {
-                            historico.push(Fala::nova(conversa::DONO, l.trim()));
+                            let texto = l.trim().to_string();
+                            let n = estado.proxima_marca();
+                            let linha = Linha {
+                                n,
+                                quem: conversa::DONO.to_string(),
+                                texto: texto.clone(),
+                                quando: agora(),
+                                responde: None,
+                                modelo: String::new(),
+                            };
+                            let _ = civ_visual::anotar(pasta, &linha);
+                            let chamados: Vec<String> =
+                                conversa::chamados(&civ, &texto).into_iter().map(|i| civ.corvos[i].nome.clone()).collect();
+                            let para = if chamados.is_empty() { "o bando".to_string() } else { chamados.join(", ") };
+                            println!("  {} {}", civ_visual::marca(n, cores), p.dim(&format!("sua fala, para {para}")));
+                            for nome in chamados {
+                                if estado.economia.dormindo(&nome, agora()) {
+                                    println!("  {}", p.dim(&format!("😴 {nome} está dormindo; responde assim que acordar.")));
+                                }
+                                fila.push_back((nome, n));
+                            }
+                            historico.push(Fala::nova(conversa::DONO, &texto));
+                            recentes.push(linha);
                             break;
                         }
                     },
@@ -998,15 +1503,54 @@ pub async fn conversar(
                 }
                 civ = estado.civilizacao()?;
                 vozes = self::vozes(store, &civ)?.0;
-                historico.push(Fala::nova(conversa::DONO, &format!("({})", msgs.join(" "))));
+                historico.push(Fala::nova(conversa::MUNDO, &msgs.join(" ")));
             }
             Ok(_) => {}
             Err(err) => println!("  {}", p.yellow(&format!("prazos: {err:#}"))),
         }
+        // A economia anda: energia, sono, fome, colheitas prontas, mercado.
+        match passo_da_economia(pasta, &mut estado) {
+            Ok((linhas, mudou)) => {
+                for l in &linhas {
+                    mostrar_mundo(p, l);
+                    historico.push(Fala::nova(conversa::MUNDO, &l.texto));
+                }
+                recentes.extend(linhas);
+                if mudou {
+                    civ = estado.civilizacao()?;
+                    vozes = self::vozes(store, &civ)?.0;
+                }
+            }
+            Err(err) => println!("  {}", p.yellow(&format!("economia: {err:#}"))),
+        }
 
-        // Quem dispara fala; às vezes outro, bem ativado, só pensa.
-        let (i, pensa) = ativacao.passo(&civ, &historico, &mut rng);
-        if let Some(j) = pensa {
+        // Quem fala: quem o dono chamou pelo nome (na ordem); senão, quem dispara (como
+        // neurônios). Quem dorme não fala.
+        let t = agora();
+        let (mut i, pensa) = ativacao.passo(&civ, &historico, &mut rng);
+        let mut chamado: Option<u64> = None;
+        fila.retain(|(nome, _)| civ.corvos.iter().any(|c| &c.nome == nome));
+        if let Some(pos) = fila.iter().position(|(nome, _)| !estado.economia.dormindo(nome, t))
+            && let Some((nome, n)) = fila.remove(pos)
+            && let Some(j) = civ.corvos.iter().position(|c| c.nome == nome)
+        {
+            i = j;
+            chamado = Some(n);
+        }
+        if chamado.is_none() && estado.economia.dormindo(&civ.corvos[i].nome, t) {
+            let nivel = |j: usize| ativacao.nivel.get(j).copied().unwrap_or(0.0);
+            let acordado = (0..civ.corvos.len())
+                .filter(|j| !estado.economia.dormindo(&civ.corvos[*j].nome, t))
+                .max_by(|a, b| nivel(*a).partial_cmp(&nivel(*b)).unwrap_or(std::cmp::Ordering::Equal));
+            match acordado {
+                Some(j) => i = j,
+                None => {
+                    println!("  {}", p.dim("😴 O bando inteiro está dormindo…"));
+                    continue;
+                }
+            }
+        }
+        if let Some(j) = pensa.filter(|j| *j != i && !estado.economia.dormindo(&civ.corvos[*j].nome, t)) {
             let quem = civ.corvos[j].clone();
             if let Ok((pensamento, _, _)) = pedir(
                 &vozes[j],
@@ -1017,17 +1561,19 @@ pub async fn conversar(
             .await
             {
                 let pensamento = conversa::limpar(&pensamento, &quem.nome, 80);
-                if !pensamento.is_empty() {
+                if !pensamento.is_empty() && !conversa::eh_silencio(&pensamento) {
                     println!("  {}", p.dim(&format!("💭 {} pensa: {pensamento}", quem.nome)));
                     let mut m = Memoria::abrir(pasta, &quem.nome);
                     m.pensou(&pensamento);
                     let _ = m.salvar(pasta, quem.rag_mb);
+                    estado.economia.gastar(&quem.nome, civ_economia::ENERGIA_POR_PENSAMENTO);
                 }
             }
             chamadas += 1;
         }
         let corvo = civ.corvos[i].clone();
         let mut mem = Memoria::abrir(pasta, &corvo.nome);
+        garantir_ficha(&mut mem, &corvo);
         let max_palavras = rng.ate(conversa::MAX_PALAVRAS) + 1;
         let recente: String = historico.iter().rev().take(4).map(|f| f.texto.clone()).collect::<Vec<_>>().join(" ");
         let vetor = if mem.tem_vetores() && !recente.is_empty() {
@@ -1038,15 +1584,15 @@ pub async fn conversar(
         let sistema = format!(
             "{}{}",
             conversa::perfil(&corvo, &civ, o.tema.as_deref()),
-            contexto_do_corvo(&corvo, &mem, &historico, vetor.as_deref())
+            contexto_do_corvo(&corvo, &mem, &historico, vetor.as_deref(), &estado, pasta)
         );
-        let usuario = conversa::pedido(&corvo.nome, &historico, max_palavras);
+        let usuario = conversa::pedido(&corvo.nome, &historico, max_palavras, chamado.is_some());
         if p.on {
             print!("  {}", p.dim(&format!("… {} está pensando ({max_palavras} palavras no máximo)", corvo.nome)));
             let _ = std::io::stdout().flush();
         }
-        // Folga de tokens para modelos que raciocinam antes (gpt-5-nano).
-        let max_tokens = (max_palavras as u32) * 3 + 900;
+        // Folga de tokens para modelos que raciocinam antes (gpt-5-nano) e para as ações.
+        let max_tokens = (max_palavras as u32) * 3 + 1100;
         let resultado = tokio::select! {
             r = pedir(&vozes[i], sistema, usuario, max_tokens) => r,
             _ = tokio::signal::ctrl_c() => {
@@ -1061,26 +1607,49 @@ pub async fn conversar(
         match resultado {
             Ok((bruto, modelo, nota)) => {
                 erros_seguidos = 0;
-                let (sem_tag, termo) = conversa::extrair_pesquisa(&bruto);
-                let texto = conversa::limpar(&sem_tag, &corvo.nome, max_palavras);
-                if texto.is_empty() && termo.is_none() {
-                    continue;
-                }
+                // As ações entre colchetes saem antes de contar as palavras.
+                let (sem_pesquisa, termo) = conversa::extrair_pesquisa(&bruto);
+                let (sem_criar, criar) = extrair_criacao(&sem_pesquisa);
+                let (sem_acoes, acoes) = civ_economia::extrair_acoes(&sem_criar);
+                let silencio = conversa::eh_silencio(&sem_acoes);
+                let texto = if silencio {
+                    String::new()
+                } else {
+                    conversa::limpar(&sem_acoes.replace(conversa::SILENCIO, " "), &corvo.nome, max_palavras)
+                };
                 if let Some(n) = nota {
                     println!("  {}", p.dim(&format!("↻ {n}")));
                 }
-                if !texto.is_empty() {
-                    println!(
-                        "{} {}",
-                        p.c256b(cor_provedor(&modelo.provedor), &corvo.nome),
-                        p.dim(&format!("· {} · {} palavra(s)", modelo.modelo, texto.split_whitespace().count()))
-                    );
-                    println!("  {texto}\n");
-                    // Memória própria: a fala e, se respondeu a pergunta de outro corvo, o vínculo.
-                    if let Some((quem, pergunta)) = conversa::pergunta_para(&civ, &historico, &corvo.nome) {
-                        mem.vincular(&quem, &pergunta, &texto);
+                estado.economia.gastar(&corvo.nome, civ_economia::ENERGIA_POR_FALA);
+                if texto.is_empty() {
+                    if acoes.is_empty() && termo.is_none() && criar.is_none() {
+                        println!("  {}", p.dim(&format!("🤫 {} preferiu ficar em silêncio.", corvo.nome)));
+                    }
+                    if let Some(a) = ativacao.nivel.get_mut(i) {
+                        *a = 0.0;
+                    }
+                } else {
+                    let responde = civ_visual::responde_a(&civ, &recentes, &corvo.nome, &texto, chamado);
+                    let linha = Linha {
+                        n: estado.proxima_marca(),
+                        quem: corvo.nome.clone(),
+                        texto: texto.clone(),
+                        quando: agora(),
+                        responde,
+                        modelo: rotulo(&modelo),
+                    };
+                    let _ = civ_visual::anotar(pasta, &linha);
+                    mostrar_fala(&estado, &corvo, &modelo, &linha, &recentes, cores, p);
+                    // Respondeu a uma pergunta (do dono ou de outro corvo): vira um vínculo,
+                    // que os jurados e o oráculo avaliam.
+                    if let Some(r) = responde.and_then(|r| recentes.iter().find(|x| x.n == r))
+                        && r.texto.contains('?')
+                        && r.quem != conversa::MUNDO
+                    {
+                        let pergunta = format!("{} {}", civ_visual::forma(r.n), r.texto);
+                        mem.vincular(&r.quem, &pergunta, &texto);
                         if let Some(v) =
-                            vetorizar(store, &[format!("{pergunta} {texto}")]).await.and_then(|mut v| v.pop())
+                            vetorizar(store, &[format!("{} {texto}", r.texto)]).await.and_then(|mut v| v.pop())
                             && let Some(ult) = mem.vinculos.last_mut()
                         {
                             ult.vetor = Some(civ_memoria::compactar(&v));
@@ -1088,29 +1657,83 @@ pub async fn conversar(
                     }
                     mem.falou(&texto);
                     let _ = mem.salvar(pasta, corvo.rag_mb);
-                    // A cada 25 falas dele, o corvo reflete e tira lições para ser melhor.
-                    if mem.falas.len().is_multiple_of(25) {
-                        match refletir(store, pasta, &vozes[i], &corvo, &civ, &acontecimentos(&mem)).await {
+                    historico.push(Fala::nova(&corvo.nome, &texto));
+                    recentes.push(linha);
+                    if recentes.len() > 60 {
+                        recentes.drain(..recentes.len() - 60);
+                    }
+                    falas += 1;
+                    estado.falas_total += 1;
+                    let k = {
+                        let k = estado.falas_de.entry(corvo.nome.clone()).or_default();
+                        *k += 1;
+                        *k
+                    };
+                    // Na 5ª fala e depois a cada 20, o corvo reflete: tira lições e
+                    // reescreve a ficha (é assim que ele lembra quem é).
+                    if k == 5 || k.is_multiple_of(20) {
+                        match refletir(
+                            store,
+                            pasta,
+                            &vozes[i],
+                            &corvo,
+                            &civ,
+                            &acontecimentos(&Memoria::abrir(pasta, &corvo.nome)),
+                        )
+                        .await
+                        {
                             Ok(l) if !l.is_empty() => {
                                 println!("  {}", p.dim(&format!("🧠 {} refletiu: {}", corvo.nome, l.join(" · "))))
                             }
                             _ => {}
                         }
+                        chamadas += 1;
                     }
-                    historico.push(Fala::nova(&corvo.nome, &texto));
-                    falas += 1;
-                    estado.falas_total += 1;
-                    let _ = salvar(pasta, &estado);
                 }
+                // As ações da economia e a criação de artefatos.
+                let vivos = estado.vivos();
+                let mut eventos = Vec::new();
+                for a in &acoes {
+                    match estado.economia.executar(&corvo.nome, a, agora(), &vivos, pasta) {
+                        Ok(ev) => eventos.push(ev),
+                        Err(msg) => eventos
+                            .push(Evento { texto: format!("✗ {}: {msg}.", corvo.nome), envolvidos: Vec::new() }),
+                    }
+                }
+                if let Some((tipo, titulo)) = criar {
+                    estado.economia.gastar(&corvo.nome, 3.0);
+                    match criar_artefato_do_corvo(pasta, &vozes[i], &corvo, &civ, &tipo, &titulo).await {
+                        Ok(ev) => eventos.push(ev),
+                        Err(err) => eventos.push(Evento {
+                            texto: format!("✗ {} não conseguiu criar “{titulo}”: {err:#}.", corvo.nome),
+                            envolvidos: Vec::new(),
+                        }),
+                    }
+                    chamadas += 1;
+                }
+                let linhas = anotar_mundo(pasta, &mut estado, &eventos);
+                for l in &linhas {
+                    mostrar_mundo(p, l);
+                    historico.push(Fala::nova(conversa::MUNDO, &l.texto));
+                }
+                recentes.extend(linhas);
+                let _ = salvar(pasta, &estado);
                 if let Some(t) = termo {
                     if corvo.consultas > 0 {
                         match crate::civ_internet::consultar(store, pasta, &mut estado, &corvo.nome, &t, p).await {
-                            Ok(resumo) => {
-                                historico.push(Fala::nova(&corvo.nome, &format!("(pesquisei \"{t}\": {resumo})")))
-                            }
+                            Ok(Some(resumo)) => historico
+                                .push(Fala::nova(&corvo.nome, &format!("(pesquisei \"{t}\" e aprendi: {resumo})"))),
+                            Ok(None) => historico.push(Fala::nova(
+                                conversa::MUNDO,
+                                &format!(
+                                    "🔎 A pesquisa de {} (\"{t}\") não trouxe nada novo; a consulta não foi gasta.",
+                                    corvo.nome
+                                ),
+                            )),
                             Err(err) => println!("  {}", p.yellow(&format!("🔎 {}: {err:#}", corvo.nome))),
                         }
                         civ = estado.civilizacao()?;
+                        chamadas += 1;
                     } else {
                         println!(
                             "  {}",
@@ -1123,7 +1746,7 @@ pub async fn conversar(
                     break;
                 }
                 // A cada 200 falas: as notas do dono e um julgamento.
-                if estado.falas_total > 0 && estado.falas_total.is_multiple_of(AVALIAR_A_CADA) {
+                if !texto.is_empty() && estado.falas_total > 0 && estado.falas_total.is_multiple_of(AVALIAR_A_CADA) {
                     println!("  {}", p.bold(&format!("📣 {} falas: hora de avaliar o bando.", estado.falas_total)));
                     if let Err(err) = pedir_notas_do_dono(pasta, &mut estado, p, &mut rx).await {
                         println!("  {}", p.yellow(&format!("{err:#}")));
@@ -1132,6 +1755,7 @@ pub async fn conversar(
                         println!("  {}", p.yellow(&format!("{err:#}")));
                     }
                     civ = estado.civilizacao()?;
+                    vozes = self::vozes(store, &civ)?.0;
                 }
             }
             Err(err) => {
@@ -1360,8 +1984,15 @@ mod tests {
             m.salvar(&d, 0.1).unwrap_or_else(|e| panic!("{e}"));
         }
         let msgs = cumprir_prazos(&d, &mut e).unwrap_or_else(|e| panic!("{e}"));
-        assert_eq!(msgs.len(), 2);
+        assert!(msgs[0].starts_with("⚰") && msgs[1].starts_with("🐣"));
+        // A economia acompanha: os mortos perdem a bolsa, os novos nascem com a deles e
+        // a cada 2 nascimentos surge um terreno (5 da Gênese + 2 agora, com 15 nascidos).
+        assert!(msgs.iter().any(|m| m.contains("dotcoins")));
         let depois = nomes(&e);
+        assert!(depois.iter().all(|n| e.economia.bolsas.contains_key(n)));
+        assert!(condenados.iter().all(|n| !e.economia.bolsas.contains_key(n)));
+        assert_eq!(e.economia.nascimentos, 15);
+        assert_eq!(e.economia.terrenos.len(), 7);
         assert_eq!(depois.len(), 10);
         assert!(condenados.iter().all(|c| !depois.contains(c)));
         assert!(antes.iter().take(5).all(|c| depois.contains(c)));
@@ -1384,6 +2015,48 @@ mod tests {
         assert_eq!(e.semente, 7);
         assert_eq!(nomes(&e).len(), 10);
         let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn fome_mata_e_nasce_outro() {
+        let d = pasta_teste();
+        let mut e = abrir(&d, Some(9), None).unwrap_or_else(|e| panic!("{e}"));
+        let vivos = nomes(&e);
+        let (faminto, alimentado) = (vivos[0].clone(), vivos[1].clone());
+        for (n, b) in e.economia.bolsas.iter_mut() {
+            b.energia = if *n == faminto || *n == alimentado { 50.0 } else { 90.0 };
+            b.comida = if *n == alimentado { 5 } else { 0 };
+        }
+        let (linhas, mudou) = passo_da_economia(&d, &mut e).unwrap_or_else(|e| panic!("{e}"));
+        assert!(mudou);
+        let agora_vivos = nomes(&e);
+        assert!(!agora_vivos.contains(&faminto), "morreu de fome");
+        assert!(agora_vivos.contains(&alimentado) && e.economia.dormindo(&alimentado, agora() + 1));
+        assert_eq!(agora_vivos.len(), 10, "nasce outro no lugar");
+        assert!(linhas.iter().any(|l| l.texto.contains("morreu de fome")));
+        let civ = e.civilizacao().unwrap_or_else(|e| panic!("{e}"));
+        assert!(civ.livro_dos_mortos.iter().any(|b| b.nome == faminto && b.licao.contains("fome")));
+        assert!(d.join("mortos").read_dir().is_ok_and(|mut r| r.next().is_some()), "a alma vai para mortos/");
+        // O registro da conversa tem os avisos do Cartório (para retomar e para o painel).
+        assert!(civ_visual::ler(&d).iter().any(|l| l.quem == conversa::MUNDO && l.texto.contains("fome")));
+        // Pausada, o relógio não anda.
+        e.pausada_desde = Some(agora());
+        assert!(passo_da_economia(&d, &mut e).unwrap_or_else(|e| panic!("{e}")).0.is_empty());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn le_o_pedido_de_criar_artefato() {
+        assert_eq!(
+            extrair_criacao("Vou escrever. [CRIAR: livro | O Voo da Noite] Aguardem."),
+            ("Vou escrever. Aguardem.".to_string(), Some(("livro".to_string(), "O Voo da Noite".to_string())))
+        );
+        assert_eq!(extrair_criacao("[criar: música: \"Lua\"]").1, Some(("música".to_string(), "Lua".to_string())));
+        assert_eq!(
+            extrair_criacao("[CRIAR: poema Chuva fina]").1,
+            Some(("poema".to_string(), "Chuva fina".to_string()))
+        );
+        assert_eq!(extrair_criacao("sem nada [PLANTAR: T1]").1, None);
     }
 
     #[test]

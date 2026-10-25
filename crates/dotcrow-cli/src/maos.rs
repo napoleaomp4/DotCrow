@@ -699,7 +699,7 @@ Troque para o modo Computador ou instale.",
         // Perfil novo e descartável a cada chamada: um perfil compartilhado deixa um
         // SingletonLock para trás quando o navegador anterior não fecha direito, e aí
         // toda chamada seguinte falha. Com um perfil por chamada isso nunca acontece.
-        let perfil = std::env::temp_dir().join(format!("dotcrow-nav-{}-{}", std::process::id(), call.n));
+        let perfil = crate::trava::temporaria().join(format!("dotcrow-nav-{}-{}", std::process::id(), call.n));
         let _ = std::fs::remove_dir_all(&perfil);
         let base = |c: &mut tokio::process::Command| {
             c.arg("--headless=new")
@@ -1175,15 +1175,22 @@ fn home() -> PathBuf {
 /// a pasta Download do celular (`~/storage/downloads`), quando o dono já rodou
 /// `termux-setup-storage`.
 pub fn pasta_de_downloads() -> PathBuf {
-    if cfg!(target_os = "android") || std::env::var_os("TERMUX_VERSION").is_some() {
-        let celular = home().join("storage").join("downloads");
-        if celular.is_dir() {
-            return celular;
-        }
-    }
-    directories::UserDirs::new()
-        .and_then(|d| d.download_dir().map(Path::to_path_buf))
-        .unwrap_or_else(|| home().join("Downloads"))
+    // Descoberta uma vez só: com a trava da Civilização, o arquivo que diz o nome da
+    // pasta (Downloads, Transferências...) deixa de ser legível.
+    static PASTA: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+    PASTA
+        .get_or_init(|| {
+            if cfg!(target_os = "android") || std::env::var_os("TERMUX_VERSION").is_some() {
+                let celular = home().join("storage").join("downloads");
+                if celular.is_dir() {
+                    return celular;
+                }
+            }
+            directories::UserDirs::new()
+                .and_then(|d| d.download_dir().map(Path::to_path_buf))
+                .unwrap_or_else(|| home().join("Downloads"))
+        })
+        .clone()
 }
 
 /// Pasta onde ficam as conversas: `~/DotCrow/conversas`.
@@ -1193,7 +1200,12 @@ pub fn pasta_das_conversas() -> PathBuf {
 
 /// Cria a pasta de uma conversa nova, com data e um nome tirado do pedido.
 pub fn nova_pasta(pedido: &str) -> std::io::Result<PathBuf> {
-    let raiz = pasta_das_conversas();
+    nova_pasta_em(&pasta_das_conversas(), pedido)
+}
+
+/// Igual a [`nova_pasta`], dentro de `raiz`.
+pub fn nova_pasta_em(raiz: &Path, pedido: &str) -> std::io::Result<PathBuf> {
+    let raiz = raiz.to_path_buf();
     std::fs::create_dir_all(&raiz)?;
     let dia = hoje();
     let slug: String = {
@@ -1527,6 +1539,10 @@ fn shell(cmd: &str) -> tokio::process::Command {
     } else {
         let mut c = tokio::process::Command::new(achar_shell());
         c.args(["-c", cmd]);
+        // Com a trava da Civilização, o /tmp fica de fora: a temporária é a da sandbox.
+        if crate::trava::ativa() {
+            c.env("TMPDIR", crate::trava::temporaria());
+        }
         c
     }
 }

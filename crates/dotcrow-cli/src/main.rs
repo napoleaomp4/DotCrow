@@ -9,10 +9,12 @@ mod busca;
 mod cdp;
 mod celular;
 mod civ;
+mod civ_economia;
 mod civ_internet;
 mod civ_julgamento;
 mod civ_memoria;
 mod civ_missao;
+mod civ_visual;
 mod conectores;
 mod desfazer;
 mod maos;
@@ -22,6 +24,7 @@ mod painel;
 mod remoto;
 mod store;
 mod terminal;
+mod trava;
 mod treino;
 
 use std::{io::IsTerminal, path::PathBuf, sync::Arc};
@@ -249,6 +252,10 @@ enum CivAcao {
     },
     /// O Livro dos Mortos: quem já deixou de existir e a lição que deixou.
     Mortos,
+    /// O mapa dos terrenos (dono, plantio, colheita, quem está lá) e a economia: energia,
+    /// dotcoins, comida e sementes de cada corvo, ofertas e o mercado.
+    #[command(visible_aliases = ["mapa", "economia"])]
+    Terrenos,
     /// Um corvo sai da conversa e FAZ algo, com mãos: terminal, arquivos, internet,
     /// navegador, mouse e teclado, a tela do celular, ligações e SMS (o irreversível pede
     /// a sua confirmação). Ex.: dotcrow civ missao Nyx poste no X o resumo do dia
@@ -683,12 +690,21 @@ fn aberto_no_terminal() -> bool {
     true
 }
 
-#[tokio::main]
-async fn main() -> std::process::ExitCode {
+fn main() -> std::process::ExitCode {
     let cli = Cli::parse();
     // O ícone roda `dotcrow` sem comando e sem terminal: aí um erro precisa aparecer na tela.
     let pelo_icone = cli.command.is_none() && !std::io::stderr().is_terminal();
-    match run(cli).await {
+    // A Civilização roda trancada na pasta DotCrow. A trava vem antes de qualquer thread
+    // (o runtime do tokio nasce depois), para valer para todas.
+    trancar_a_civilizacao(&cli);
+    let rt = match tokio::runtime::Builder::new_multi_thread().enable_all().build() {
+        Ok(rt) => rt,
+        Err(e) => {
+            eprintln!("Erro: não consegui iniciar o DotCrow: {e}");
+            return std::process::ExitCode::FAILURE;
+        }
+    };
+    match rt.block_on(run(cli)) {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(e) => {
             eprintln!("Erro: {e:?}");
@@ -696,6 +712,36 @@ async fn main() -> std::process::ExitCode {
                 aviso::erro_na_tela(&format!("{e:#}"));
             }
             std::process::ExitCode::FAILURE
+        }
+    }
+}
+
+/// No modo Civilização (conversar, julgar, pesquisar e missão), o processo só enxerga
+/// `Downloads/DotCrow` e a pasta de dados do DotCrow (Linux, Landlock). Veja [`trava`].
+fn trancar_a_civilizacao(cli: &Cli) {
+    let Some(Command::Civilizacao {
+        acao: Some(CivAcao::Conversar { .. } | CivAcao::Julgar | CivAcao::Pesquisar { .. } | CivAcao::Missao { .. }),
+        ..
+    }) = &cli.command
+    else {
+        return;
+    };
+    let Ok(dados) = cli.home.clone().map(Ok).unwrap_or_else(store::default_data_dir) else { return };
+    let p = Paint::new();
+    let pasta = civ::pasta(&dados);
+    let raiz = civ::raiz_da_sandbox();
+    let livres = vec![raiz.clone(), dados.clone(), pasta];
+    match trava::aplicar(&livres, &raiz.join("tmp")) {
+        trava::Situacao::Completa | trava::Situacao::Parcial => eprintln!(
+            "{}",
+            p.dim(&format!(
+                "🔒 Sandbox trancada (Landlock): só {} e {} (o sistema só para leitura).",
+                raiz.display(),
+                dados.display()
+            ))
+        ),
+        trava::Situacao::Indisponivel(motivo) => {
+            eprintln!("{}", p.yellow(&format!("⚠ Sem a trava de pastas: {motivo}. A civilização roda sem ela.")))
         }
     }
 }
@@ -778,6 +824,11 @@ async fn run(cli: Cli) -> Result<()> {
                 Some(CivAcao::Mortos) => {
                     let e = civ::abrir_bando(&pasta, None, None, &p)?;
                     civ::mostrar_mortos(&e, &p)?;
+                    return Ok(());
+                }
+                Some(CivAcao::Terrenos) => {
+                    let e = civ::abrir_bando(&pasta, None, None, &p)?;
+                    civ::mostrar_terrenos(&e, &p);
                     return Ok(());
                 }
                 Some(CivAcao::Pausar) => {

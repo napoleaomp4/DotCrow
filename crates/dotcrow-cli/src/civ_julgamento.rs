@@ -194,6 +194,17 @@ fica para depois que eles deixarem de existir.",
     }
     e.notas_pendentes.clear();
     e.julgamentos = n;
+    // O pódio pode abrir o mercado (1 minuto) quando quiser.
+    e.economia.podio = ranking.iter().take(3).map(|(nome, _)| nome.clone()).collect();
+    let aviso = crate::civ_economia::Evento {
+        texto: format!(
+            "🏆 Pódio do julgamento {n}: {}. Eles ganham memória e consultas à internet e podem abrir o MERCADO por 1 \
+minuto quando quiserem ([MERCADO]).",
+            e.economia.podio.join(", ")
+        ),
+        envolvidos: e.economia.podio.clone(),
+    };
+    civ::anotar_mundo(pasta, e, std::slice::from_ref(&aviso));
     salvar(pasta, e)?;
 
     // Cada acontecimento ensina: todos refletem sobre o resultado e guardam lições.

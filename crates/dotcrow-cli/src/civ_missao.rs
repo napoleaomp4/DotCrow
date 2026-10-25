@@ -240,11 +240,14 @@ async fn missao(
     let mut mem = Memoria::abrir(pasta, &corvo.nome);
     let licoes = mem.ultimas_licoes(6);
     let lembrancas = mem.lembrancas(pedido, 4, None);
-    let trabalho = maos::nova_pasta(pedido)?;
-    let downloads = maos::pasta_de_downloads();
+    // Tudo dentro de Downloads/DotCrow: o trabalho em missoes/, o que sai em entregas/.
+    let raiz = civ::raiz_da_sandbox();
+    let trabalho = maos::nova_pasta_em(&raiz.join("missoes"), pedido)?;
+    let entregas = raiz.join("entregas");
+    let _ = std::fs::create_dir_all(&entregas);
     let maos = Maos::new(modo, trabalho.clone(), store.dir().to_path_buf(), canal.clone(), Liberados::default())
         .com_perguntas()
-        .com_saidas(downloads)
+        .com_saidas(entregas)
         .com_conectores(crate::conectores::Conexoes::do_store(store));
     let persona = conversa::perfil(&corvo, &civ, None);
     let request = pedido_da_missao(&persona, &licoes, &lembrancas, contexto, pedido);

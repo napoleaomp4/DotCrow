@@ -35,7 +35,7 @@ impl Navegador {
     /// Sobe um Chrome dedicado (janela própria) e conecta na aba por CDP.
     pub async fn abrir(bin: &std::path::Path, largura: i64, altura: i64) -> Result<Self, String> {
         let porta = porta_livre().await?;
-        let perfil = std::env::temp_dir().join(format!("dotcrow-cdp-{}-{}", std::process::id(), porta));
+        let perfil = crate::trava::temporaria().join(format!("dotcrow-cdp-{}-{}", std::process::id(), porta));
         let _ = std::fs::remove_dir_all(&perfil);
 
         let mut c = tokio::process::Command::new(bin);
