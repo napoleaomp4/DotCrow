@@ -406,6 +406,9 @@ pastas com /pasta + caminho."
             return;
         }
         if matches!(arg, "julgar" | "julgamento") {
+            if self.civ_trancada(&["julgar".to_string()]).await {
+                return;
+            }
             if let Err(err) = crate::civ_julgamento::julgar(&self.store, &pasta, &mut e, &p).await {
                 println!("{}", p.red(&format!("{err:#}")));
             }
@@ -413,6 +416,10 @@ pastas com /pasta + caminho."
         }
         if matches!(arg, "mortos") {
             let _ = crate::civ::mostrar_mortos(&e, &p);
+            return;
+        }
+        if matches!(arg, "terrenos" | "mapa" | "economia") {
+            crate::civ::mostrar_terrenos(&e, &p);
             return;
         }
         if matches!(arg, "pausar" | "parar") {
@@ -435,6 +442,11 @@ pastas com /pasta + caminho."
             let (nome, pedido) = resto.trim().split_once(char::is_whitespace).unwrap_or((resto.trim(), ""));
             if pedido.trim().is_empty() {
                 println!("{}", p.yellow("Use: /civ missao <corvo> <o que fazer> (ou /civ missao auto <o que fazer>)"));
+                return;
+            }
+            let args = ["missao", "--modo", self.modo.as_str(), nome, pedido.trim()].map(str::to_string);
+            if self.civ_trancada(&args).await {
+                println!("{}", p.dim("O que o corvo entregou fica em Downloads/DotCrow/entregas."));
                 return;
             }
             let (rx, leitor) = self.leitor_de_linhas();
@@ -465,6 +477,13 @@ pastas com /pasta + caminho."
         }
         let tema = arg.strip_prefix("conversar").unwrap_or(arg).trim();
         let tema = (!tema.is_empty()).then(|| tema.to_string());
+        let mut args = vec!["conversar".to_string()];
+        if let Some(t) = &tema {
+            args.extend(["--tema".to_string(), t.clone()]);
+        }
+        if self.civ_trancada(&args).await {
+            return;
+        }
         let (rx, leitor) = self.leitor_de_linhas();
         let o = crate::civ::Opcoes { intervalo: std::time::Duration::from_secs(20), max_falas: None, tema };
         if let Err(err) = crate::civ::conversar(&self.store, &pasta, &e, o, &p, rx).await {
@@ -474,6 +493,28 @@ pastas com /pasta + caminho."
             println!("{}", p.dim("Aperte Enter para voltar ao DotCrow."));
         }
         let _ = leitor.await;
+    }
+
+    /// A Civilização roda num processo à parte, trancado na pasta DotCrow (a trava do
+    /// Linux não tem volta, e o modo terminal precisa continuar enxergando o projeto).
+    /// Devolve falso se não deu para abrir o processo (aí roda aqui mesmo, sem a trava).
+    async fn civ_trancada(&self, args: &[String]) -> bool {
+        let Ok(exe) = std::env::current_exe() else { return false };
+        let mut c = tokio::process::Command::new(exe);
+        c.arg("--home").arg(self.store.dir()).arg("civ").args(args);
+        c.stdin(std::process::Stdio::inherit())
+            .stdout(std::process::Stdio::inherit())
+            .stderr(std::process::Stdio::inherit());
+        let Ok(mut filho) = c.spawn() else { return false };
+        // O Ctrl+C chega aos dois: o filho encerra a conversa; este aqui só espera.
+        loop {
+            tokio::select! {
+                _ = filho.wait() => break,
+                _ = tokio::signal::ctrl_c() => {}
+            }
+        }
+        println!();
+        true
     }
 
     /// As linhas digitadas vêm pelo próprio editor do modo terminal; Ctrl+C vira "pare".
