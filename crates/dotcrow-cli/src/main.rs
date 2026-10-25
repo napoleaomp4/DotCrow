@@ -231,6 +231,14 @@ impl Paint {
     fn cyan(&self, s: &str) -> String {
         self.wrap("36", s)
     }
+    /// Texto numa cor da paleta de 256 (degrada para texto puro sem cor).
+    fn c256(&self, code: u8, s: &str) -> String {
+        self.wrap(&format!("38;5;{code}"), s)
+    }
+    /// Igual a `c256`, mas em negrito.
+    fn c256b(&self, code: u8, s: &str) -> String {
+        self.wrap(&format!("1;38;5;{code}"), s)
+    }
 }
 
 fn read_secret() -> Result<Zeroizing<String>> {
