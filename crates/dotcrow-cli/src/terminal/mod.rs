@@ -350,6 +350,7 @@ pastas com /pasta + caminho."
             "/modo" => self.trocar_modo(arg),
             "/provedor" | "/provedores" => self.trocar_provedor(arg),
             "/chave" | "/chaves" => self.chave(arg).await,
+            "/civ" | "/civilizacao" | "/bando" | "/corvos" => self.civilizacao(arg).await,
             "/testar" => {
                 if let Err(e) = crate::testar(&self.store, (!arg.is_empty()).then_some(arg)).await {
                     println!("{}", p.red(&format!("{e:#}")));
@@ -377,9 +378,58 @@ pastas com /pasta + caminho."
         true
     }
 
+    /// A conversa dos 10 corvos da civilização, aqui dentro do modo terminal.
+    async fn civilizacao(&mut self, arg: &str) {
+        let p = self.p;
+        let e = match crate::civ::abrir(self.store.dir(), None, None) {
+            Ok(e) => e,
+            Err(err) => {
+                println!("{}", p.red(&format!("{err:#}")));
+                return;
+            }
+        };
+        let arg = arg.trim();
+        if matches!(arg, "ver" | "mostrar" | "lista") {
+            if let Err(err) = crate::civ::mostrar(&e, true, &p) {
+                println!("{}", p.red(&format!("{err:#}")));
+            }
+            return;
+        }
+        let tema = arg.strip_prefix("conversar").unwrap_or(arg).trim();
+        let tema = (!tema.is_empty()).then(|| tema.to_string());
+        // As linhas digitadas vêm pelo próprio editor do modo terminal; Ctrl+C vira "pare".
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+        let entrada = self.entrada.clone();
+        let leitor = tokio::spawn(async move {
+            loop {
+                match entrada.ler("", "", false).await {
+                    Leitura::Linha(l) => {
+                        let parar = crate::civ::eh_parada(&l);
+                        if tx.send(l).is_err() || parar {
+                            break;
+                        }
+                    }
+                    Leitura::Interrompido => {
+                        let _ = tx.send("pare".into());
+                        break;
+                    }
+                    Leitura::Fim => break,
+                }
+            }
+        });
+        let o = crate::civ::Opcoes { intervalo: std::time::Duration::from_secs(20), max_falas: None, tema };
+        if let Err(err) = crate::civ::conversar(&self.store, &e, o, &p, rx).await {
+            println!("{}", p.red(&format!("{err:#}")));
+        }
+        if !leitor.is_finished() {
+            println!("{}", p.dim("Aperte Enter para voltar ao DotCrow."));
+        }
+        let _ = leitor.await;
+    }
+
     fn ajuda(&self) {
         let p = self.p;
-        let linhas: [(&str, &str); 21] = [
+        let linhas: [(&str, &str); 23] = [
             ("", "Pedidos"),
             ("texto livre", "uma tarefa para os corvos (eles trabalham nos arquivos do projeto)"),
             ("@notas.php", "anexa um arquivo ou pasta ao pedido (Tab completa o caminho)"),
@@ -395,6 +445,11 @@ pastas com /pasta + caminho."
             ("/alinhar", "o Huginn olha o projeto e faz perguntas; vira o perfil do projeto"),
             ("/perfil", "mostra o perfil do projeto"),
             ("/perguntas sempre|direto", "o Huginn pergunta (ou não) antes de cada tarefa"),
+            ("", "Civilização dos Corvos"),
+            (
+                "/civ [tema]",
+                "os 10 corvos conversam (cada um com o seu modelo); escreva para falar com eles, pare encerra",
+            ),
             ("", "Controle"),
             ("/desfazer", "volta os arquivos que a última tarefa mudou"),
             ("/modo computador|livre|sandbox", "quanto os corvos podem fazer sem perguntar"),
