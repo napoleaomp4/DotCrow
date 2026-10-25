@@ -108,6 +108,11 @@ pub enum ProviderError {
     /// O pedido é inválido; trocar de provedor não resolve.
     #[error("pedido inválido: {0}")]
     BadRequest(String),
+    /// O modelo se recusou a responder (filtro de segurança do provedor). Outro
+    /// provedor pode responder normalmente, então o roteador troca — sem castigo,
+    /// porque o próximo pedido pode passar.
+    #[error("o modelo recusou: {0}")]
+    Refused(String),
     /// Não há chave configurada para este provedor.
     #[error("nenhuma chave configurada")]
     NotConfigured,
@@ -132,7 +137,7 @@ impl ProviderError {
                 Duration::from_secs(10 * 60)
             }
             ProviderError::Unavailable(_) => Duration::from_secs(20),
-            ProviderError::BadRequest(_) => Duration::ZERO,
+            ProviderError::BadRequest(_) | ProviderError::Refused(_) => Duration::ZERO,
         }
     }
 
@@ -214,5 +219,12 @@ mod tests {
         assert!(!ProviderError::BadRequest("x".into()).should_failover());
         assert!(ProviderError::QuotaExhausted.should_failover());
         assert!(ProviderError::Misconfigured("modelo".into()).should_failover());
+    }
+
+    #[test]
+    fn refusal_fails_over_without_cooldown() {
+        let e = ProviderError::Refused("filtro".into());
+        assert!(e.should_failover());
+        assert_eq!(e.cooldown(), Duration::ZERO);
     }
 }
