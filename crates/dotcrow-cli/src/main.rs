@@ -6,6 +6,7 @@
 mod aviso;
 mod busca;
 mod cdp;
+mod civ;
 mod desfazer;
 mod maos;
 mod memoria;
@@ -134,19 +135,21 @@ enum Command {
     /// Mostra os agentes e como cada um pensa.
     #[command(visible_alias = "agents")]
     Agentes,
-    /// A Civilização dos Corvos (v2): 10 corvos nascem na Gênese, cada um com genoma
-    /// e modelo próprio (metade gpt-5-nano, metade claude-haiku-5-5). Fase 1, só Sandbox.
+    /// A Civilização dos Corvos (v2): os 10 corvos, cada um com genoma e modelo próprio
+    /// (metade gpt-5-nano, metade claude-haiku-5-5). O bando fica salvo e é sempre o mesmo.
     #[command(visible_aliases = ["civ", "bando"])]
     Civilizacao {
-        /// Semente, para repetir a mesma geração. Padrão: aleatória pelo relógio.
-        #[arg(long)]
+        #[command(subcommand)]
+        acao: Option<CivAcao>,
+        /// Gênese com esta semente (troca o bando salvo).
+        #[arg(long, global = true)]
         semente: Option<u64>,
         /// Desenho compacto (uma linha por corvo), bom no Termux estreito.
         #[arg(long)]
         compacto: bool,
-        /// Modelos dos corvos, em rodízio: `provedor:modelo,provedor:modelo`.
+        /// Modelos dos corvos, em rodízio: `provedor:modelo,provedor:modelo` (fica salvo).
         /// Padrão: `openai:gpt-5-nano,anthropic:claude-haiku-5-5` (metade em cada).
-        #[arg(long)]
+        #[arg(long, global = true)]
         modelos: Option<String>,
     },
     /// Mostra o fluxo de uma tarefa entre os agentes.
@@ -161,6 +164,33 @@ enum Command {
         #[command(subcommand)]
         qual: DemoQual,
     },
+}
+
+#[derive(Subcommand)]
+enum CivAcao {
+    /// Os corvos conversam entre si, cada um com o seu modelo. Escreva para falar com
+    /// eles; `pare` (ou Ctrl+C) encerra.
+    #[command(visible_aliases = ["conversa", "falar"])]
+    Conversar {
+        /// Segundos entre uma fala e outra.
+        #[arg(long, default_value_t = 20)]
+        intervalo: u64,
+        /// Para sozinho depois de tantas falas (padrão: só quando você disser pare).
+        #[arg(long)]
+        max_falas: Option<u32>,
+        /// Tema da conversa (padrão: livre, eles escolhem).
+        #[arg(long)]
+        tema: Option<String>,
+    },
+    /// Troca o modelo de um corvo. Ex.: dotcrow civ modelo Nyx anthropic:claude-haiku-5-5
+    Modelo {
+        /// Nome do corvo (sem acento também vale).
+        corvo: String,
+        /// provedor:modelo
+        modelo: String,
+    },
+    /// Nova Gênese: 10 corvos novos (o rodízio de modelos continua o mesmo).
+    Nova,
 }
 
 #[derive(Subcommand)]
@@ -553,9 +583,30 @@ async fn run(cli: Cli) -> Result<()> {
             return Ok(());
         }
         Command::Demo { qual: DemoQual::Troca } => return demo_troca().await,
-        Command::Civilizacao { semente, compacto, modelos } => {
-            civilizacao_mostrar(*semente, *compacto, modelos.as_deref())?;
-            return Ok(());
+        Command::Civilizacao { acao, semente, compacto, modelos } => {
+            let p = Paint::new();
+            match acao {
+                None => {
+                    let e = civ::abrir(&dir, *semente, modelos.as_deref())?;
+                    civ::mostrar(&e, *compacto, &p)?;
+                    return Ok(());
+                }
+                Some(CivAcao::Nova) => {
+                    if let Some(m) = modelos.as_deref() {
+                        civ::abrir(&dir, None, Some(m))?;
+                    }
+                    let e = civ::nova(&dir, *semente)?;
+                    println!("{}", p.green("Nova Gênese: 10 corvos novos."));
+                    civ::mostrar(&e, true, &p)?;
+                    return Ok(());
+                }
+                Some(CivAcao::Modelo { corvo, modelo }) => {
+                    let (nome, m) = civ::trocar_modelo(&dir, corvo, modelo)?;
+                    println!("{} agora fala com {}:{}.", p.bold(&nome), m.provedor, m.modelo);
+                    return Ok(());
+                }
+                Some(CivAcao::Conversar { .. }) => {}
+            }
         }
         _ => {}
     }
@@ -647,72 +698,23 @@ async fn run(cli: Cli) -> Result<()> {
             )
             .await?
         }
+        Command::Civilizacao {
+            acao: Some(CivAcao::Conversar { intervalo, max_falas, tema }),
+            semente,
+            modelos,
+            ..
+        } => {
+            let e = civ::abrir(store.dir(), *semente, modelos.as_deref())?;
+            let o = civ::Opcoes {
+                intervalo: std::time::Duration::from_secs((*intervalo).max(1)),
+                max_falas: *max_falas,
+                tema: tema.clone(),
+            };
+            civ::conversar(&store, &e, o, &Paint::new(), civ::teclado_stdin()).await?;
+        }
         Command::Agentes | Command::Fluxo { .. } | Command::Demo { .. } | Command::Civilizacao { .. } => {}
     }
     Ok(())
-}
-
-/// Roda a Gênese e mostra os 10 corvos da civilização (Fase 1, só Sandbox).
-fn civilizacao_mostrar(semente: Option<u64>, compacto: bool, modelos: Option<&str>) -> Result<()> {
-    use dotcrow_agents::civilizacao::{Civilizacao, Tamanho, desenhar};
-    let p = Paint::new();
-    let s = semente.unwrap_or_else(|| {
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos() as u64)
-            .unwrap_or(0x00C0_FFEE)
-    });
-    let modelos = modelos_da_civilizacao(modelos.unwrap_or("openai:gpt-5-nano,anthropic:claude-haiku-5-5"))?;
-    let civ = Civilizacao::genese(s, &modelos);
-
-    println!();
-    println!(
-        "  {}  {}",
-        p.bold("A Civilização dos Corvos"),
-        p.dim(&format!("geração {} · {} corvos · Sandbox", civ.geracao, civ.corvos.len()))
-    );
-    let lista: Vec<String> = modelos.iter().map(|m| format!("{}:{}", m.provedor, m.modelo)).collect();
-    println!(
-        "  {}\n",
-        p.dim(&format!("Opus 5.5 fica nos pontos de controle; os corvos usam, em rodízio: {}.", lista.join(", ")))
-    );
-
-    let tam = if compacto { Tamanho::Compacto } else { Tamanho::Medio };
-    for corvo in &civ.corvos {
-        println!("{}\n", desenhar(corvo, tam, p.on));
-    }
-
-    println!("  {}", p.bold("Conexões externas de hoje"));
-    println!("  {}", p.dim("só os 3 melhores do ranking saem para o mundo — 3, 2 e 1 conexão:"));
-    for (nome, n) in civ.conexoes_do_dia().into_iter().take(3) {
-        println!("    {} {}", p.bold(&nome), p.dim(&format!("· {n} conexão(ões)")));
-    }
-    println!("\n  {}", p.dim(&format!("Repetir esta geração: dotcrow civilizacao --semente {s}")));
-    println!(
-        "  {}",
-        p.dim("Trocar os modelos: dotcrow civilizacao --modelos openai:gpt-5-nano,anthropic:claude-haiku-5-5")
-    );
-    println!();
-    Ok(())
-}
-
-/// Lê `provedor:modelo,provedor:modelo` (os corvos recebem os modelos em rodízio).
-fn modelos_da_civilizacao(texto: &str) -> Result<Vec<dotcrow_agents::civilizacao::Modelo>> {
-    let mut modelos = Vec::new();
-    for item in texto.split(',').map(str::trim).filter(|s| !s.is_empty()) {
-        let Some((provedor, modelo)) = item.split_once(':') else {
-            bail!("modelo sem provedor: {item} (use provedor:modelo, ex.: openai:gpt-5-nano)");
-        };
-        let (provedor, modelo) = (provedor.trim(), modelo.trim());
-        if provedor.is_empty() || modelo.is_empty() {
-            bail!("modelo incompleto: {item} (use provedor:modelo)");
-        }
-        modelos.push(dotcrow_agents::civilizacao::Modelo::novo(provedor, modelo));
-    }
-    if modelos.is_empty() {
-        bail!("passe ao menos um modelo (ex.: openai:gpt-5-nano)");
-    }
-    Ok(modelos)
 }
 
 #[cfg(test)]
@@ -724,15 +726,5 @@ mod tests {
         assert_eq!(when(0), "1970-01-01");
         assert_eq!(when(1_792_368_000), "2026-10-19");
         assert_eq!(when(951_782_400), "2000-02-29");
-    }
-
-    #[test]
-    fn modelos_da_civilizacao_le_a_lista() {
-        let m = modelos_da_civilizacao("openai:gpt-5-nano, anthropic:claude-haiku-5-5").unwrap_or_default();
-        assert_eq!(m.len(), 2);
-        assert_eq!(m.first().map(|x| x.modelo.as_str()), Some("gpt-5-nano"));
-        assert_eq!(m.get(1).map(|x| x.provedor.as_str()), Some("anthropic"));
-        assert!(modelos_da_civilizacao("gpt-5-nano").is_err());
-        assert!(modelos_da_civilizacao("").is_err());
     }
 }
