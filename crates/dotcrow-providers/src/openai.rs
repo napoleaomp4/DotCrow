@@ -133,7 +133,7 @@ fn parse(v: &Value, fallback_model: &str) -> Result<CompletionResponse, Provider
         let reason = choice.get("finish_reason").and_then(Value::as_str).unwrap_or("desconhecido");
         let refusal = choice.pointer("/message/refusal").and_then(Value::as_str);
         return Err(match refusal {
-            Some(r) => ProviderError::BadRequest(format!("o modelo recusou: {}", http::redact_tokens(r))),
+            Some(r) => ProviderError::Refused(http::redact_tokens(r)),
             None => ProviderError::Unavailable(format!("resposta vazia (motivo: {reason})")),
         });
     }
@@ -286,7 +286,7 @@ mod tests {
         let empty = json!({"choices":[{"message":{"content":null},"finish_reason":"length"}]});
         assert!(matches!(parse(&empty, "m"), Err(ProviderError::Unavailable(_))));
         let refused = json!({"choices":[{"message":{"content":null,"refusal":"não posso"}}]});
-        assert!(matches!(parse(&refused, "m"), Err(ProviderError::BadRequest(_))));
+        assert!(matches!(parse(&refused, "m"), Err(ProviderError::Refused(_))));
     }
 
     #[test]
