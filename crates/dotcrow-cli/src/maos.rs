@@ -170,6 +170,8 @@ pub struct Maos {
     pode_perguntar: bool,
     /// Onde vão as entregas que não fazem parte do projeto (a pasta Downloads).
     saidas: Option<PathBuf>,
+    /// As chaves e contas dos conectores (X, GitHub, Google Drive...).
+    conexoes: Option<Arc<crate::conectores::Conexoes>>,
 }
 
 impl Maos {
@@ -206,7 +208,14 @@ impl Maos {
             diario: None,
             pode_perguntar: false,
             saidas: None,
+            conexoes: None,
         }
+    }
+
+    /// Liga os conectores (serviços com API, chaves no cofre).
+    pub fn com_conectores(mut self, cx: crate::conectores::Conexoes) -> Self {
+        self.conexoes = Some(Arc::new(cx));
+        self
     }
 
     /// Entregas que não são do projeto (relatórios, PDFs, imagens, exportações) vão para
@@ -900,6 +909,46 @@ Troque para o modo Computador ou instale.",
         }
     }
 
+    /// Um serviço pela API oficial, com a chave do cofre. Ler é livre; escrever pergunta
+    /// sempre (é publicar, enviar ou apagar em nome do dono).
+    async fn conector(&self, call: &ToolCall, titulo: &str) -> ToolOutput {
+        let Some(cx) = &self.conexoes else {
+            return ToolOutput::err("os conectores não estão ligados nesta tarefa");
+        };
+        let Some(nome) = call.text("servico").or_else(|| call.text("conector")).or_else(|| call.text("nome")) else {
+            return ToolOutput::err("faltou args.servico (ex.: \"github\"). Veja a lista com conectores {busca}.");
+        };
+        let Some(c) = crate::conectores::achar(nome) else {
+            let parecidos: Vec<&str> = crate::conectores::buscar(nome).iter().take(8).map(|c| c.id).collect();
+            return ToolOutput::err(format!(
+                "não conheço o conector \"{nome}\". Parecidos: {}. Veja todos com conectores {{busca}}.",
+                if parecidos.is_empty() { "nenhum".to_string() } else { parecidos.join(", ") }
+            ));
+        };
+        let metodo = call.text("metodo").unwrap_or("GET").trim().to_uppercase();
+        if !crate::conectores::eh_leitura(&metodo) {
+            if self.modo == Modo::Sandbox {
+                return ToolOutput::err("no modo Sandbox os conectores só leem (GET)");
+            }
+            if !self.autorizar(call, titulo, Categoria::Mensagem, metodo == "DELETE").await {
+                return ToolOutput::err(format!("o dono não autorizou: {titulo}"));
+            }
+        }
+        let consulta: Vec<(String, String)> = call
+            .args
+            .get("consulta")
+            .and_then(serde_json::Value::as_object)
+            .map(|m| {
+                m.iter()
+                    .map(|(k, v)| (k.clone(), v.as_str().map(String::from).unwrap_or_else(|| v.to_string())))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let Some(http) = &self.http else { return ToolOutput::err("sem cliente HTTP") };
+        let caminho = call.text("caminho").unwrap_or("");
+        crate::conectores::chamar(http, cx, c, &metodo, caminho, &consulta, call.args.get("corpo")).await
+    }
+
     /// O celular Android (ADB e Termux:API): planeja, pergunta quando precisa e executa.
     async fn celular(&self, call: &ToolCall) -> ToolOutput {
         if self.modo == Modo::Sandbox {
@@ -1026,12 +1075,14 @@ ações da tarefa.\n\
 - teclado {{texto}} digita um texto; teclado {{teclas}} aperta atalhos, ex.: \"ctrl+l\", \"Return\", \"ctrl+s\".\n\
 - tela {{}}: salva uma captura da tela na pasta.\n\
 {celular}\
+{conectores}\
 - concluir {{texto}}: termina a tarefa com a entrega final para o dono.\n\n\
 Prefira terminal, web e arquivos (mais rápidos e confiáveis). Mouse e teclado são o último recurso, para \
 programas que só funcionam pela tela.",
             home = home().display(),
             celular =
                 if crate::celular::disponivel() || cfg!(target_os = "android") { crate::celular::manual() } else { "" },
+            conectores = self.conexoes.as_deref().map(crate::conectores::manual).unwrap_or_default(),
         )
     }
 
@@ -1070,6 +1121,13 @@ programas que só funcionam pela tela.",
                     .unwrap_or_default();
                 format!("{} {alvo}", call.text("acao").unwrap_or("tela")).trim().to_string()
             }
+            "conector" | "api" => format!(
+                "{} {} {}",
+                call.text("metodo").unwrap_or("GET").to_uppercase(),
+                call.text("servico").or_else(|| call.text("conector")).unwrap_or("?"),
+                t("caminho")
+            ),
+            "conectores" => t("busca"),
             "ligar" => t("numero"),
             "sms" => format!("{}: {}", t("numero"), t("texto")),
             "falar" | "notificar" => t("texto"),
@@ -1095,10 +1153,15 @@ programas que só funcionam pela tela.",
             "abrir" => self.abrir(call).await,
             "mouse" | "teclado" | "janelas" | "focar" | "tela" => self.controle(call, &titulo).await,
             t if crate::celular::FERRAMENTAS.contains(&t) => self.celular(call).await,
+            "conector" | "api" => self.conector(call, &titulo).await,
+            "conectores" => match &self.conexoes {
+                Some(cx) => ToolOutput::ok(crate::conectores::listar_para_corvo(cx, call.text("busca").unwrap_or(""))),
+                None => ToolOutput::err("os conectores não estão ligados nesta tarefa"),
+            },
             other => ToolOutput::err(format!(
                 "ferramenta \"{other}\" não existe. Use: terminal, ler_arquivo, editar_arquivo, escrever_arquivo, \
 listar, buscar, perguntar, web, navegador, baixar, abrir, janelas, focar, mouse, teclado, tela, celular, ligar, sms, \
-falar, ouvir, notificar ou concluir."
+falar, ouvir, notificar, conectores, conector ou concluir."
             )),
         }
     }

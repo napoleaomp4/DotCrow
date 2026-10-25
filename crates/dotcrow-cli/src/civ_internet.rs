@@ -172,6 +172,7 @@ pub async fn consultar(
 /// `/pesquisar [corvo] [termo]` e `dotcrow civ pesquisar`: sem corvo, cada corvo que tem
 /// consultas usa uma; sem termo, o próprio corvo escolhe o assunto.
 pub async fn pesquisar_pedido(store: &Store, pasta: &Path, e: &mut Estado, pedido: &str, p: &Paint) -> Result<()> {
+    crate::civ::exigir_ativa(e)?;
     let civ = e.civilizacao()?;
     let (alvos, termo): (Vec<usize>, Option<String>) = match conversa::citado(&civ, pedido, None) {
         Some(i) => {

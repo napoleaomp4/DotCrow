@@ -227,6 +227,7 @@ async fn missao(
     if pedido.trim().is_empty() {
         bail!("diga a missão: dotcrow civ missao <corvo> <o que fazer>");
     }
+    civ::exigir_ativa(e)?;
     let civ = e.civilizacao()?;
     let i = escolher(&civ, nome, pedido)?;
     let corvo = civ.corvos[i].clone();
@@ -243,7 +244,8 @@ async fn missao(
     let downloads = maos::pasta_de_downloads();
     let maos = Maos::new(modo, trabalho.clone(), store.dir().to_path_buf(), canal.clone(), Liberados::default())
         .com_perguntas()
-        .com_saidas(downloads);
+        .com_saidas(downloads)
+        .com_conectores(crate::conectores::Conexoes::do_store(store));
     let persona = conversa::perfil(&corvo, &civ, None);
     let request = pedido_da_missao(&persona, &licoes, &lembrancas, contexto, pedido);
     println!(
@@ -266,6 +268,8 @@ async fn missao(
         // O corvo usa a memória própria (lições e lembranças já vão no pedido).
         memory: None,
         inbox: Some(canal.as_ref()),
+        // Na missão quem decide é o próprio corvo: sem triagem.
+        oraculo: orchestrator::Oraculo::Desligado,
     };
     let mut render = Render::new(*p);
     let resultado = tokio::select! {

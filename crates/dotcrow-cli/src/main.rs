@@ -13,6 +13,7 @@ mod civ_internet;
 mod civ_julgamento;
 mod civ_memoria;
 mod civ_missao;
+mod conectores;
 mod desfazer;
 mod maos;
 mod memoria;
@@ -171,6 +172,14 @@ enum Command {
         #[arg(long)]
         modo: Option<String>,
     },
+    /// Conectores: mais de 200 serviços (X, GitHub, Google Drive, Notion, Shopify, Mercado
+    /// Pago, Telegram, ViaCEP...) que os corvos usam pela API oficial, com a chave no cofre.
+    /// Ler é livre; publicar, enviar e apagar pedem a sua confirmação.
+    #[command(visible_aliases = ["connectors", "integracoes", "integrações"])]
+    Conectores {
+        #[command(subcommand)]
+        acao: Option<ConectoresAcao>,
+    },
     /// Mostra o que os corvos conseguem fazer no celular Android (ADB e Termux:API) e
     /// como ligar o que falta.
     #[command(visible_aliases = ["android", "telefone"])]
@@ -256,6 +265,52 @@ enum CivAcao {
     },
     /// Nova Gênese: 10 corvos novos (o rodízio de modelos continua o mesmo).
     Nova,
+    /// Pausa a civilização: sem conversa, julgamento nem missões, e o relógio das 24 h
+    /// para. O DotCrow segue com os 6 corvos.
+    #[command(visible_alias = "parar")]
+    Pausar,
+    /// Retoma a civilização pausada (os prazos somam o tempo parado).
+    #[command(visible_aliases = ["continuar", "voltar"])]
+    Retomar,
+}
+
+#[derive(Subcommand)]
+enum ConectoresAcao {
+    /// Lista o catálogo (ou busca por nome e categoria). Ex.: dotcrow conectores listar brasil
+    #[command(visible_aliases = ["ls", "buscar"])]
+    Listar {
+        /// O que buscar (nome, id ou categoria).
+        busca: Vec<String>,
+    },
+    /// Mostra o endereço da API, como vai a chave e onde pegar.
+    Ver {
+        /// Id do conector (ex.: github).
+        id: String,
+    },
+    /// Liga um conector: guarda a chave no cofre (sem aparecer na tela) e a conta, se precisar.
+    #[command(visible_alias = "add")]
+    Adicionar {
+        /// Id do conector (ex.: github, x, google, shopify).
+        id: String,
+        /// Domínio da sua conta, para serviços como Shopify, Jira e WordPress.
+        #[arg(long)]
+        conta: Option<String>,
+        /// Rótulo opcional da chave.
+        #[arg(long)]
+        rotulo: Option<String>,
+    },
+    /// Faz uma leitura de teste no serviço.
+    #[command(visible_alias = "test")]
+    Testar {
+        /// Id do conector.
+        id: String,
+    },
+    /// Desliga um conector (apaga a chave e a conta).
+    #[command(visible_alias = "rm")]
+    Remover {
+        /// Id do conector.
+        id: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -513,10 +568,12 @@ async fn tarefa(store: &Store, texto: &str, tipo: Option<&str>, provedor: Option
     println!("{} {}", p.bold("Tarefa:"), texto);
     println!("{}\n", p.dim(&format!("Pasta da conversa: {} · modo {}", pasta.display(), modo.as_str())));
     let hands =
-        maos::Maos::new(modo, pasta, store.dir().to_path_buf(), Arc::new(TerminalAprovador), Default::default());
+        maos::Maos::new(modo, pasta, store.dir().to_path_buf(), Arc::new(TerminalAprovador), Default::default())
+            .com_conectores(conectores::Conexoes::do_store(store));
     let mut render = terminal::Render::new(p);
     let print = |e: Event| render.evento(e);
     let memoria = store.master_key().ok().and_then(|k| memoria::Memoria::abrir(store.dir(), k).ok());
+    let oraculo = store.oraculo();
     let input = orchestrator::TaskInput {
         request: texto,
         kind,
@@ -524,6 +581,7 @@ async fn tarefa(store: &Store, texto: &str, tipo: Option<&str>, provedor: Option
         history: None,
         memory: memoria.as_ref().map(|m| m as &dyn dotcrow_agents::Memory),
         inbox: None,
+        oraculo: orchestrator::Oraculo::Router(oraculo.as_ref().unwrap_or(&router)),
     };
     orchestrator::run(&router, input, print).await?;
     Ok(())
@@ -722,6 +780,30 @@ async fn run(cli: Cli) -> Result<()> {
                     civ::mostrar_mortos(&e, &p)?;
                     return Ok(());
                 }
+                Some(CivAcao::Pausar) => {
+                    let mut e = civ::abrir_bando(&pasta, None, None, &p)?;
+                    if civ::pausar(&pasta, &mut e)? {
+                        println!("{}", p.yellow("⏸ Civilização pausada. O DotCrow segue com os 6 corvos e o Oráculo."));
+                        println!("{}", p.dim("Os prazos de 24 h param. Para voltar: dotcrow civ retomar"));
+                    } else {
+                        println!("{}", p.dim("A civilização já estava pausada. Para voltar: dotcrow civ retomar"));
+                    }
+                    return Ok(());
+                }
+                Some(CivAcao::Retomar) => {
+                    let mut e = civ::abrir_bando(&pasta, None, None, &p)?;
+                    match civ::retomar(&pasta, &mut e)? {
+                        Some(s) => println!(
+                            "{}",
+                            p.green(&format!(
+                                "▶ Civilização de volta (ficou pausada {} min; os prazos somaram esse tempo).",
+                                s / 60
+                            ))
+                        ),
+                        None => println!("{}", p.dim("A civilização não estava pausada.")),
+                    }
+                    return Ok(());
+                }
                 Some(CivAcao::Avaliar) => {
                     let mut e = civ::abrir_bando(&pasta, None, None, &p)?;
                     let mut rx = civ::teclado_stdin();
@@ -795,6 +877,41 @@ async fn run(cli: Cli) -> Result<()> {
             tarefa(&store, &texto.join(" "), tipo.as_deref(), provedor.as_deref(), modo).await?
         }
         Command::Provedores { acao } => provedores(&store, acao.as_ref())?,
+        Command::Conectores { acao } => {
+            let p = Paint::new();
+            match acao {
+                None => conectores::listar(&store, "", &p),
+                Some(ConectoresAcao::Listar { busca }) => conectores::listar(&store, &busca.join(" "), &p),
+                Some(ConectoresAcao::Ver { id }) => conectores::ver(&store, id, &p)?,
+                Some(ConectoresAcao::Testar { id }) => conectores::testar(&store, id, &p).await?,
+                Some(ConectoresAcao::Remover { id }) => {
+                    let c = conectores::achar(id).ok_or_else(|| anyhow::anyhow!("não conheço o conector \"{id}\""))?;
+                    let n = conectores::remover(&store, c)?;
+                    println!("{} desligado ({n} chave(s) apagada(s)).", c.nome);
+                    if !c.chave.is_empty() {
+                        println!("Ele usava a chave de {}, que vale para outros conectores também.", c.chave);
+                    }
+                }
+                Some(ConectoresAcao::Adicionar { id, conta, rotulo }) => {
+                    let c = conectores::achar(id)
+                        .ok_or_else(|| anyhow::anyhow!("não conheço o conector \"{id}\" (veja: dotcrow conectores)"))?;
+                    if !c.dica.is_empty() {
+                        println!("{} {}", p.bold(c.nome), p.dim(&format!("· {}", c.dica)));
+                    }
+                    let segredo = if c.precisa_chave() {
+                        println!("{}", p.dim(&format!("Formato: {}.", c.formato())));
+                        Some(read_secret()?)
+                    } else {
+                        None
+                    };
+                    conectores::adicionar(&store, c, conta.as_deref(), segredo, rotulo.clone())?;
+                    println!("{}", p.green(&format!("{} ligado. A chave fica no cofre e nunca é mostrada.", c.nome)));
+                    if c.teste.is_some() {
+                        println!("Teste agora com: dotcrow conectores testar {}", c.id);
+                    }
+                }
+            }
+        }
         Command::Terminal { pasta, modo, provedor, direto, pedido } => {
             let modo = modo
                 .as_deref()

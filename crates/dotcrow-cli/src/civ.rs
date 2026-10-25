@@ -78,6 +78,10 @@ pub struct Estado {
     /// Quantos julgamentos já houve.
     #[serde(default)]
     pub julgamentos: u32,
+    /// Desde quando a civilização está pausada. Pausada, ninguém conversa, não há
+    /// julgamento nem missão e o relógio das 24 h para; o DotCrow segue com os 6 corvos.
+    #[serde(default)]
+    pub pausada_desde: Option<u64>,
 }
 
 impl Estado {
@@ -297,6 +301,10 @@ pub fn abrir(pasta: &Path, semente: Option<u64>, modelos: Option<&str>) -> Resul
 /// fica guardada), a biografia entra no Livro dos Mortos e nascem novos no lugar.
 /// Devolve as mensagens para mostrar ao dono.
 pub fn cumprir_prazos(pasta: &Path, e: &mut Estado) -> Result<Vec<String>> {
+    // Pausada, o relógio das 24 h não anda.
+    if e.pausada_desde.is_some() {
+        return Ok(Vec::new());
+    }
     let efetiva = e.civilizacao()?;
     let modelos = ler_modelos(&e.modelos.join(","))?;
     let pop = e.populacao_mut()?;
@@ -372,6 +380,41 @@ fn quanto_falta(ate: u64) -> String {
     if s >= 3600 { format!("{}h{:02}", s / 3600, (s % 3600) / 60) } else { format!("{} min", s / 60) }
 }
 
+/// Pausa a civilização. Devolve falso se já estava pausada.
+pub fn pausar(pasta: &Path, e: &mut Estado) -> Result<bool> {
+    if e.pausada_desde.is_some() {
+        return Ok(false);
+    }
+    e.pausada_desde = Some(agora());
+    salvar(pasta, e)?;
+    Ok(true)
+}
+
+/// Retoma a civilização: os prazos dos condenados andam só o tempo em que ela esteve
+/// ativa (somam o tempo parado). Devolve quantos segundos ficou pausada.
+pub fn retomar(pasta: &Path, e: &mut Estado) -> Result<Option<u64>> {
+    let Some(desde) = e.pausada_desde.take() else { return Ok(None) };
+    let parada = agora().saturating_sub(desde);
+    for c in &mut e.populacao_mut()?.corvos {
+        if let Some(t) = c.condenado_ate.as_mut() {
+            *t += parada;
+        }
+    }
+    salvar(pasta, e)?;
+    Ok(Some(parada))
+}
+
+/// Falha com uma explicação se a civilização estiver pausada.
+pub fn exigir_ativa(e: &Estado) -> Result<()> {
+    if e.pausada_desde.is_some() {
+        bail!(
+            "a Civilização está pausada (o DotCrow segue com os 6 corvos). Para voltar: dotcrow civ retomar \
+(ou /civ retomar no modo terminal)"
+        );
+    }
+    Ok(())
+}
+
 /// Mostra o bando.
 pub fn mostrar(e: &Estado, compacto: bool, p: &Paint) -> Result<()> {
     let civ = e.civilizacao()?;
@@ -391,6 +434,16 @@ pub fn mostrar(e: &Estado, compacto: bool, p: &Paint) -> Result<()> {
         "  {}\n",
         p.dim(&format!("O Opus 5.5 é o oráculo e a Alfândega; os corvos usam, em rodízio: {}.", e.modelos.join(", ")))
     );
+    if let Some(desde) = e.pausada_desde {
+        println!(
+            "  {}\n",
+            p.yellow(&format!(
+                "⏸ Pausada há {}: sem conversa, julgamento nem missões, e o relógio das 24 h parado. O DotCrow segue \
+com os 6 corvos. Retome com: dotcrow civ retomar",
+                quanto_falta(agora() + agora().saturating_sub(desde))
+            ))
+        );
+    }
     let tam = if compacto { Tamanho::Compacto } else { Tamanho::Medio };
     for corvo in &civ.corvos {
         println!("{}\n", desenhar(corvo, tam, p.on));
@@ -824,6 +877,7 @@ pub async fn conversar(
     p: &Paint,
     mut rx: tokio::sync::mpsc::UnboundedReceiver<String>,
 ) -> Result<()> {
+    exigir_ativa(e)?;
     let mut estado = e.clone();
     let mut civ = estado.civilizacao()?;
     let (mut vozes, avisos) = vozes(store, &civ)?;
@@ -1259,6 +1313,31 @@ mod tests {
         assert!(dar_nota(&d, &nome).is_err());
         let n = nova(&d, Some(8)).unwrap_or_else(|e| panic!("{e}"));
         assert!(n.notas.is_empty());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn pausada_o_relogio_para_e_o_prazo_soma_ao_retomar() {
+        let d = pasta_teste();
+        let mut e = abrir(&d, Some(5), None).unwrap_or_else(|e| panic!("{e}"));
+        let antes = nomes(&e);
+        let alvo = antes[9].clone();
+        if let Some(c) = e.populacao_mut().unwrap_or_else(|e| panic!("{e}")).por_nome_mut(&alvo) {
+            c.condenado_ate = Some(1);
+        }
+        assert!(pausar(&d, &mut e).unwrap_or_else(|e| panic!("{e}")));
+        assert!(!pausar(&d, &mut e).unwrap_or_else(|e| panic!("{e}")), "já pausada");
+        // Pausada: o prazo vencido não leva ninguém, e conversar, julgar e missão param.
+        assert!(cumprir_prazos(&d, &mut e).unwrap_or_else(|e| panic!("{e}")).is_empty());
+        assert_eq!(nomes(&e), antes);
+        assert!(exigir_ativa(&e).is_err());
+        // Ficou "pausada" 1000 s: o prazo anda esse tanto.
+        e.pausada_desde = Some(agora() - 1000);
+        assert!(retomar(&d, &mut e).unwrap_or_else(|e| panic!("{e}")).is_some_and(|s| s >= 1000));
+        let c = e.civilizacao().unwrap_or_else(|e| panic!("{e}"));
+        assert!(c.corvos.iter().find(|c| c.nome == alvo).and_then(|c| c.condenado_ate).is_some_and(|t| t >= 1001));
+        assert!(exigir_ativa(&e).is_ok());
+        assert!(retomar(&d, &mut e).unwrap_or_else(|e| panic!("{e}")).is_none());
         let _ = std::fs::remove_dir_all(&d);
     }
 

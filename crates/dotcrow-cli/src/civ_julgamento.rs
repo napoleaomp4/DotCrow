@@ -33,6 +33,7 @@ fn curto(s: &str, n: usize) -> String {
 
 /// Roda um julgamento completo e salva o resultado.
 pub async fn julgar(store: &Store, pasta: &Path, e: &mut Estado, p: &Paint) -> Result<()> {
+    civ::exigir_ativa(e)?;
     for msg in civ::cumprir_prazos(pasta, e)? {
         println!("  {}", p.yellow(&msg));
     }

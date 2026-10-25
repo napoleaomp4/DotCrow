@@ -57,6 +57,10 @@ pub struct Config {
     /// Endereço da API por provedor (por exemplo, Ollama em outra máquina).
     #[serde(default)]
     pub urls: BTreeMap<String, String>,
+    /// Conta (domínio) de cada conector que muda de endereço por dono (Shopify, Jira...).
+    /// Não é segredo: a chave fica no cofre.
+    #[serde(default)]
+    pub conectores: BTreeMap<String, String>,
 }
 
 /// Situação de um provedor, para listar na CLI e no painel.
@@ -250,6 +254,17 @@ impl Store {
             providers.push(self.provider_with(id, model).map_err(|e| anyhow::anyhow!("{id}: {e}"))?);
         }
         Ok(Router::new(providers))
+    }
+
+    /// O Oráculo: o Opus 5.5 da Anthropic, quando há chave. Ele lê cada pedido e decide
+    /// quantos corvos trabalham. Sem a chave, `None` (quem chama usa a fila de sempre).
+    pub fn oraculo(&self) -> Option<Router> {
+        if !self.list_keys().iter().any(|k| k.provider == dotcrow_providers::anthropic::ID) {
+            return None;
+        }
+        self.provider_with(dotcrow_providers::anthropic::ID, Some(dotcrow_providers::anthropic::DEEP_MODEL))
+            .ok()
+            .map(|p| Router::new(vec![p]))
     }
 
     /// Avisos úteis: chaves de provedores que o DotCrow não conhece, falta de chaves.
