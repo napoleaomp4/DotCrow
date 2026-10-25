@@ -13,6 +13,7 @@
 //! O ícone do DotCrow (sem terminal) continua abrindo o painel no navegador.
 
 mod arquivos;
+mod banner;
 mod entrada;
 mod projeto;
 mod render;
@@ -141,8 +142,7 @@ impl Repl {
 
     fn boas_vindas(&self) {
         let p = self.p;
-        println!();
-        println!("  {}  {}", p.bold("🐦‍⬛ DotCrow"), p.dim(&format!("modo terminal · v{}", env!("CARGO_PKG_VERSION"))));
+        banner::mostrar(p);
         if self.generica {
             println!(
                 "  {} {}",
