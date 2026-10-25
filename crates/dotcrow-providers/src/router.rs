@@ -184,10 +184,16 @@ impl Router {
                 }
                 Err(error) => {
                     let ja_transmitiu = comecou.load(Ordering::Relaxed);
+                    let recusa = matches!(error, ProviderError::Refused(_));
                     self.set_cooldown(p.id(), error.cooldown());
                     attempts.push(Attempt { provider: p.id().to_string(), error: Some(error) });
-                    if ja_transmitiu {
+                    if ja_transmitiu && !recusa {
                         return Err(RouterError::AllFailed { attempts });
+                    }
+                    if ja_transmitiu {
+                        // Recusa no meio do texto: avisa e recomeça no próximo provedor,
+                        // em vez de deixar a tarefa parada.
+                        on_delta(&format!("\n\n[{} recusou; continuando com o próximo provedor]\n\n", p.id()));
                     }
                 }
             }
@@ -243,6 +249,18 @@ mod tests {
         let r = Router::new(vec![a, b.clone()]);
         assert!(matches!(r.complete(&req()).await, Err(RouterError::BadRequest { .. })));
         assert_eq!(b.calls(), 0);
+    }
+
+    #[tokio::test]
+    async fn refusal_passes_to_the_next_provider_without_cooldown() {
+        let claude = MockProvider::failing("anthropic", ProviderError::Refused("filtro".into()));
+        let gpt = MockProvider::ok("openai");
+        let r = Router::new(vec![claude.clone(), gpt.clone()]);
+        let out = r.complete(&req()).await.unwrap();
+        assert_eq!(out.provider, "openai");
+        // Sem castigo: o próximo pedido tenta o Claude de novo.
+        let _ = r.complete(&req()).await;
+        assert_eq!(claude.calls(), 2);
     }
 
     #[tokio::test]
