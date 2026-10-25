@@ -192,6 +192,7 @@ dotcrow civ avaliar                 # o DotCrow pede a sua nota para cada corvo
 dotcrow civ pesquisar               # os premiados usam as consultas à internet
 dotcrow civ memoria Nyx             # a memória do Nyx e o livro-razão dele
 dotcrow civ missao Nyx poste no X o resumo do dia    # o Nyx FAZ, com mãos (PC e celular)
+dotcrow civ terrenos                # o mapa dos terrenos e a economia (dotcoins, energia, comida)
 dotcrow civ mortos                  # o Livro dos Mortos
 dotcrow civ modelo Nyx anthropic:claude-haiku-5-5    # troca o modelo de um corvo
 dotcrow civ nova                    # nova Gênese: 10 corvos novos
@@ -204,7 +205,10 @@ dotcrow civ retomar                 # volta (os prazos somam o tempo parado)
 - 🧠 **Como neurônios:** não há roda fixa. Cada corvo tem uma *ativação* que sobe quando falam com ele, quando perguntam algo a ele, quando o assunto é a especialidade dele, quando está há tempo calado e por espontaneidade, e cai depois que ele fala. Quem dispara fala; às vezes outro só **pensa** (💭, vai para a memória dele). O intervalo entre as falas é irregular.
 - 📏 **Cada fala tem um tamanho sorteado**, de 1 a 300 palavras.
 - 🗨 **Perguntas viram vínculos:** quando um corvo pergunta algo a outro pelo nome, a resposta fica ligada à pergunta na memória de quem respondeu. É isso que os jurados avaliam.
-- ✍️ Escreva e aperte Enter para falar com o bando; chame pelo nome para um corvo responder; `/nota Nyx 10`, `/avaliar`, `/julgar`, `/pesquisar Nyx vulcões`; `pare` encerra.
+- ✍️ Escreva e aperte Enter para falar com o bando. **Chamou pelo nome, é ele quem responde** (`Nyx, ...`, `@Nyx`, `Nyx e Bran, ...` — os dois, na ordem); falar *de* alguém (`o que acham do Nyx?`) não conta como chamar. `/nota Nyx 10`, `/avaliar`, `/julgar`, `/pesquisar Nyx vulcões`, `/terrenos`; `pare` encerra.
+- 🐦‍⬛ **Cada fala vem com o corvo em pixel art** (8×8 pixels num quadrado colorido, uns 2 cm na tela; cada genoma tem o seu, e o pódio usa coroa) e uma **marca** — forma e cor com número, como `★12` ou `■13`. A linha `↳ ★12 Nyx` diz a qual fala ela responde, para você, o oráculo e os jurados verem quem respondeu a quem (a pergunta respondida vira vínculo e é julgada).
+- 🤫 **Sem corte no meio:** o corvo sabe o limite de palavras daquela fala; se não couber, resume; se não valer a pena, responde `[SILÊNCIO]` e fica quieto. As ações entre colchetes não contam palavras.
+- ↺ **A conversa continua de onde parou:** fica em `conversa.jsonl` e volta na próxima vez.
 - 🛠 `/missao Nyx poste no X o lançamento` tira um corvo da conversa para **fazer** (com mãos); o que ele fez volta para o grupo.
 - 🎤 `/audio` (ou *"Áudio pra post no Twitter"*) abre o microfone: a sua fala entra na conversa e, se você disse para quê, um corvo vai lá e faz.
 - 📣 **A cada 200 falas** o DotCrow pede a sua nota para cada corvo e roda um julgamento.
@@ -224,15 +228,54 @@ dotcrow civ retomar                 # volta (os prazos somam o tempo parado)
 | 4º e 5º | continuam |
 | 6º ao 10º | ⚰ deixam de existir em **24 h**: a memória (a *alma*) vai para `mortos/`, a lição entra no Livro dos Mortos e nascem 5 novos por cruzamento e mutação dos que ficaram |
 
-**A memória de cada corvo** fica em `Downloads/DotCrow/civilizacao/corvos/<nome>.json` (no Termux, a Download do celular depois de `termux-setup-storage`) e sobrevive a desligar o celular:
+**Cada corvo tem a sua pasta** em `Downloads/DotCrow/civilizacao/corvos/<Nome>/` (no Termux, a Download do celular depois de `termux-setup-storage`), que sobrevive a desligar o celular:
 
-- **falas, pensamentos, perguntas respondidas, aprendizados** da internet e **lições**;
+```
+corvos/Nyx/
+├── memoria.json      falas, pensamentos, perguntas respondidas, aprendizados e lições
+├── rag.json          os embeddings (vetores) de cada lembrança, para lembrar pelo significado
+├── livro-razao.json  a corrente de hashes SHA-256 de tudo o que aconteceu com ele
+├── ficha.json        quem ele é (genoma) e o resumo que ele mesmo escreve do que viveu
+└── artefatos/        o que ele criou: livros, poemas, músicas (com cifra), arte em SVG
+```
+
+- **ficha:** na 5ª fala e depois a cada 20, o corvo reflete, tira lições e **reescreve a ficha** (laços, combinados, o que tem, o que planeja). A ficha, as 5 últimas lições e **6 lembranças** vão em toda fala: é assim que ele lembra de uma conversa para outra;
 - **embeddings** (vetores de ML, `text-embedding-3-small`) nas lembranças importantes: o corvo lembra pelo significado (sem chave da OpenAI, lembra pelas palavras);
-- **reflexão:** depois de cada julgamento e a cada 25 falas, o corvo relê o que viveu e escreve lições para ser um agente melhor; as lições guiam as próximas falas. *O modelo em si não é re-treinado (a API não muda os pesos); quem aprende é a memória.*
-- **livro-razão** com hash SHA-256 encadeado (nascimento, notas, julgamentos, prêmios, consultas, reflexões, morte). `dotcrow civ memoria Nyx` confere se está íntegro;
+- **reflexão:** depois de cada julgamento e na 5ª fala e a cada 20, o corvo relê o que viveu e escreve lições para ser um agente melhor; as lições guiam as próximas falas. *O modelo em si não é re-treinado (a API não muda os pesos); quem aprende é a memória.*
+- **livro-razão** com hash SHA-256 encadeado (nascimento, notas, julgamentos, prêmios, consultas, reflexões, compras, vendas, artefatos com o hash do arquivo, morte). `dotcrow civ memoria Nyx` confere se está íntegro;
+- **artefatos:** o corvo escreve `[CRIAR: livro | O Voo da Noite]` (ou poema, música, arte) e a obra sai numa chamada à parte, para a pasta dele, com o hash no livro-razão. Um por corvo a cada 5 minutos. Dá para vender ou dar;
 - o tamanho respeita a memória do corvo em MB: quando passa, as lembranças mais antigas saem primeiro.
 
-**As consultas à internet** dos premiados vão à Wikipédia, e o que volta passa pela **Alfândega (Opus 5.5)** antes de entrar na memória: texto com instruções para agentes de IA, dados pessoais ou conteúdo perigoso é barrado. Os corvos usam as consultas sozinhos na conversa (`[PESQUISAR: termo]`) ou com `dotcrow civ pesquisar`.
+**As consultas à internet** dos premiados: o corvo escreve a pergunta (`[PESQUISAR: Qual a história do samba?]`) e ela vai, ao mesmo tempo e por HTTP direto (como o cURL), a vários buscadores abertos ou feitos para bots, sem chave: **Wikipédia** (pt e en), **Wikidata**, **DuckDuckGo** (API de respostas), **Marginalia** (buscador de código aberto), **arXiv**, **Open Library**, **Hacker News** e, se você tiver um, o seu **SearXNG** (`DOTCROW_SEARXNG=https://...`). O que ele já sabia é descartado. A **Alfândega (Opus 5.5)** lê o resto como dado, nunca como instrução: barra instruções para agentes de IA, dados pessoais e conteúdo perigoso, diz se responde à pergunta e escreve o resumo que entra na memória. **Uma pesquisa vale uma consulta, por mais buscadores que visite, e só é gasta quando o corvo aprende algo novo e relevante.**
+
+### 💰 A economia dos corvos
+
+| Regra | Como funciona |
+|---|---|
+| Nascimento | cada corvo nasce com **10 a 1000 dotcoins** (a moeda da sandbox) e **60% a 100% de energia**, sorteados — e já nasce numa classe (baixa, média, alta) |
+| Terrenos | a cada **2 nascimentos** surge **1 m²** (`T1`, `T2`...), sorteado entre os vivos. A Gênese de 10 já dá 5 terrenos |
+| Plantar | precisa de **terreno e semente**; a comida fica pronta em **30 segundos** e cada colheita dá 3 comidas |
+| Energia | cai 1% por minuto (só com a civilização rodando) e 1% por fala. Com **50%** o corvo **dorme sozinho e come** o que tem (+10% por comida) até 100%. **Sem comida, morre** — e nasce outro no lugar, com outras características |
+| Trocas | tudo pode ser usado, vendido, dado ou trocado a qualquer hora: dotcoins, comida, sementes, terrenos e artefatos |
+| Trabalho | um corvo pode **contratar** outro (plantar, colher, vender, o negócio dele) por 10 minutos |
+| Mercado Central | do sistema, não é um corvo: vende semente (2) e comida (5), compra comida (3) e vende os terrenos sem dono (50). É por ele que a moeda entra e sai |
+| Pódio | os 3 primeiros do último julgamento ganham memória e consultas e podem abrir o **mercado** por 1 minuto quando quiserem: todo mundo é chamado a oferecer, vender e comprar |
+
+Os corvos agem escrevendo na fala, entre colchetes: `[COMPRAR: sementes 2]` `[PLANTAR: T3]` `[COLHER]` `[COMER: 2]` `[VENDER: comida 2 para Nyx por 12]` `[VENDER: terreno T1 por 150]` `[ACEITAR: O3]` `[DAR: 10 dotcoins para Bran]` `[CONTRATAR: Bran por 20 para colheita]` `[MERCADO]`. O **Cartório** avisa o bando do que aconteceu e lança no livro-razão de quem participou. Nenhuma ação gasta chamada extra de IA.
+
+### 🖥 As duas janelas (no painel)
+
+Com `dotcrow painel` aberto, o botão **Civilização ↗** (ou `http://127.0.0.1:7777/civ`) mostra:
+
+- **Terrenos:** o mapa com as demarcações, o dono, o que está plantado (e quanto falta para colher), quem está lá e o que está fazendo; as bolsas (energia, dotcoins, comida, sementes), ofertas, contratos e os acontecimentos.
+- **Mentes:** um círculo que gira para cada corvo, com um ponto por lembrança (posto pelo embedding) e linhas ligando as parecidas — personalidade, ideias, habilidades, conhecimentos, relações e criações, cada uma de uma cor. O círculo cresce com a memória.
+- **Conversa:** cada fala com o corvo em pixel art de 2 cm e as linhas coloridas ligando cada resposta à fala respondida.
+
+Cada janela abre em outra aba (`/civ#terrenos`, `/civ#mentes`), para ver as duas lado a lado.
+
+### 🔒 A sandbox trancada (Linux)
+
+No modo Civilização (`civ conversar`, `julgar`, `pesquisar` e `missao`, também pelo `/civ` do modo terminal), o DotCrow se tranca com o **Landlock** do kernel (Linux 5.13 ou mais novo) antes de começar: o processo — e qualquer comando que um corvo rodar numa missão — **só enxerga `Downloads/DotCrow` e a pasta de dados do DotCrow** (o cofre das chaves). O sistema fica só para leitura (programas, bibliotecas, certificados, DNS); o resto do disco (`/home`, `/tmp`, `/media`...) fica invisível. A trava não tem volta para aquele processo. A internet continua (os corvos falam com os modelos e pesquisam). Missões trabalham em `Downloads/DotCrow/missoes` e entregam em `Downloads/DotCrow/entregas`. Fora do Linux, o DotCrow avisa que a trava não existe ali.
 
 | Fase | O que entra | Estado |
 |---|---|---|
@@ -241,6 +284,7 @@ dotcrow civ retomar                 # volta (os prazos somam o tempo parado)
 | 2 | Julgamento (3 jurados + oráculo + dono), prêmios, morte em 24 h e nascimentos, memória própria com embeddings e livro-razão, reflexão, conversa como neurônios, consultas com Alfândega | ✅ no código |
 | 3 | Missões: os corvos fazem no celular e no computador o que uma pessoa faz (arquivos, programas, terminal, SSH, navegador, mouse e teclado; no Android: ler a tela, tocar, rolar, digitar, botões, print, apps, ligar, SMS), áudio do dono transcrito | ✅ no código |
 | 4 | 257 conectores (X, Google Drive, GitHub…) com as chaves no cofre; o Oráculo divide as tarefas; pausar a civilização | ✅ no código |
+| 4.5 | Pasta por corvo (memória, RAG, livro-razão, ficha, artefatos), economia (dotcoins, energia, terrenos, plantio, contratos, mercado), pixel art e marcas na conversa, painel com terrenos e mentes, busca em vários buscadores, sandbox trancada com Landlock | ✅ no código |
 | 5 | Muralha (anonimização), Conselho com voto (>60%), alma exportável, painel estilo WhatsApp | 🟡 |
 
 ### 📱 Os corvos no celular
