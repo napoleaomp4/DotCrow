@@ -89,7 +89,7 @@ fn parse(v: &Value, fallback_model: &str) -> Result<CompletionResponse, Provider
     if text.trim().is_empty() {
         let reason = v.get("stop_reason").and_then(Value::as_str).unwrap_or("desconhecido");
         if reason == "refusal" {
-            return Err(ProviderError::BadRequest("o modelo recusou este pedido".into()));
+            return Err(ProviderError::Refused("filtro de segurança da Anthropic (stop_reason: refusal)".into()));
         }
         return Err(ProviderError::Unavailable(format!("resposta sem texto (stop_reason: {reason})")));
     }
@@ -156,6 +156,7 @@ impl LlmProvider for Anthropic {
         let mut acc = String::new();
         let mut modelo_visto = model.clone();
         let mut erro: Option<String> = None;
+        let mut recusou = false;
         let resultado = {
             let mut on_event = |dados: &str| {
                 let Ok(v) = serde_json::from_str::<Value>(dados) else { return };
@@ -164,6 +165,11 @@ impl LlmProvider for Anthropic {
                         if let Some(t) = v.pointer("/delta/text").and_then(Value::as_str) {
                             acc.push_str(t);
                             on_delta(t);
+                        }
+                    }
+                    Some("message_delta") => {
+                        if v.pointer("/delta/stop_reason").and_then(Value::as_str) == Some("refusal") {
+                            recusou = true;
                         }
                     }
                     Some("message_start") => {
@@ -187,6 +193,9 @@ impl LlmProvider for Anthropic {
             Err(HttpFailure::Status { status, retry_after, body }) => {
                 return Err(classify(status, retry_after, &body, &model));
             }
+        }
+        if recusou {
+            return Err(ProviderError::Refused("filtro de segurança da Anthropic (stop_reason: refusal)".into()));
         }
         if let Some(e) = erro {
             return Err(ProviderError::Unavailable(e));
@@ -245,6 +254,8 @@ mod tests {
         assert_eq!(r.text, "Olá");
         assert_eq!(r.model, "claude-x-1");
         assert!(parse(&json!({"content":[]}), "m").is_err());
+        // Recusa do filtro de segurança vira Refused (o roteador passa para o próximo).
+        assert!(matches!(parse(&json!({"content":[],"stop_reason":"refusal"}), "m"), Err(ProviderError::Refused(_))));
     }
 
     #[test]
