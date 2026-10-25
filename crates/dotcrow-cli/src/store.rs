@@ -390,6 +390,9 @@ pub fn hint(provider: &str, e: &ProviderError) -> String {
         }
         ProviderError::Unavailable(_) => "Sem resposta do provedor. Confira a internet e tente de novo.".into(),
         ProviderError::BadRequest(_) => "O provedor recusou o pedido.".into(),
+        ProviderError::Refused(_) => {
+            "O modelo se recusou a responder (filtro de segurança do provedor). Com outro provedor na fila, o DotCrow passa para ele sozinho.".into()
+        }
     }
 }
 
