@@ -12,6 +12,10 @@ pub const JANELA: usize = 16;
 pub const MAX_PALAVRAS: usize = 300;
 /// Nome usado para as falas do dono.
 pub const DONO: &str = "Você";
+/// Nome usado para os avisos do mundo (economia, nascimentos, mercado).
+pub const MUNDO: &str = "Cartório";
+/// O que o corvo responde quando prefere não falar.
+pub const SILENCIO: &str = "[SILÊNCIO]";
 
 /// Uma fala da conversa.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -31,6 +35,11 @@ impl Fala {
     /// Se foi o dono que falou.
     pub fn do_dono(&self) -> bool {
         self.quem == DONO
+    }
+
+    /// Se é um aviso do mundo (não é fala de ninguém).
+    pub fn do_mundo(&self) -> bool {
+        self.quem == MUNDO
     }
 }
 
@@ -52,12 +61,15 @@ pub fn perfil(corvo: &Corvo, civ: &Civilizacao, tema: Option<&str>) -> String {
          Quando ele falar, responda a ele diretamente, com respeito e do seu jeito.\n\n\
          Como falar:\n\
          - Português do Brasil, como numa conversa de grupo entre amigos que pensam diferente.\n\
-         - O tamanho de cada fala é sorteado (de 1 a 300 palavras): respeite o limite de palavras do pedido.\n\
+         - O tamanho de cada fala é sorteado (de 1 a 300 palavras). O limite é seu: se o que quer dizer não \
+         cabe, resuma até caber; se não vale a pena, responda só {silencio}. Nunca deixe a ideia cortada no meio.\n\
          - Fale só por você. Não escreva falas de outros corvos e não comece com o seu nome.\n\
          - Reaja ao que acabaram de dizer: concorde, discorde, complete, pergunte a um corvo pelo nome.\n\
          - Mantenha a sua personalidade e puxe para a sua especialidade quando fizer sentido.\n\
-         - Vocês vivem numa sandbox, sem internet. Não diga que fez algo no mundo real; \
-         se surgir uma tarefa, discutam como fariam.",
+         - Vocês vivem numa sandbox. Nada chega do mundo de fora por conta própria: não prometa prazos nem \
+         \"esperar algo chegar\". O que você pode fazer está nas ações da sua situação (pesquisar, criar, plantar, \
+         comprar, vender...). Se precisar de algo do dono, peça a ele diretamente.\n\
+         - As falas do \"{mundo}\" são avisos do mundo (economia, nascimentos, mercado): são fatos, não um corvo.",
         nome = corvo.nome,
         n = civ.corvos.len(),
         ger = g.geracao,
@@ -67,6 +79,8 @@ pub fn perfil(corvo: &Corvo, civ: &Civilizacao, tema: Option<&str>) -> String {
         rep = corvo.reputacao,
         outros = outros.join(", "),
         dono = DONO,
+        silencio = SILENCIO,
+        mundo = MUNDO,
     );
     if let Some(t) = tema.map(str::trim).filter(|t| !t.is_empty()) {
         s.push_str(&format!("\n\nTema da conversa, escolhido pelo dono: {t}."));
@@ -75,9 +89,13 @@ pub fn perfil(corvo: &Corvo, civ: &Civilizacao, tema: Option<&str>) -> String {
 }
 
 /// O pedido da vez: a conversa recente e a instrução para o corvo `nome`, que fala com
-/// até `max_palavras` palavras (sorteado a cada fala).
-pub fn pedido(nome: &str, historico: &[Fala], max_palavras: usize) -> String {
-    let limite = format!("Desta vez, fale com no máximo {max_palavras} palavra(s).");
+/// até `max_palavras` palavras (sorteado a cada fala). `chamado` = o dono falou com ele
+/// pelo nome.
+pub fn pedido(nome: &str, historico: &[Fala], max_palavras: usize, chamado: bool) -> String {
+    let limite = format!(
+        "Desta vez você tem direito a no máximo {max_palavras} palavra(s) (as ações entre colchetes não contam). \
+Se não couber, resuma; se não valer a pena, responda só {SILENCIO}."
+    );
     if historico.is_empty() {
         return format!(
             "A conversa ainda não começou. Você, {nome}, abre: puxe um assunto livre, do seu jeito, \
@@ -86,9 +104,13 @@ pub fn pedido(nome: &str, historico: &[Fala], max_palavras: usize) -> String {
     }
     let inicio = historico.len().saturating_sub(JANELA);
     let linhas: Vec<String> = historico.iter().skip(inicio).map(|f| format!("{}: {}", f.quem, f.texto)).collect();
-    let instrucao = match historico.last() {
-        Some(f) if f.do_dono() => "O dono acabou de falar com o bando. Responda a ele.",
-        _ => "Continue a conversa com a sua próxima fala.",
+    let ultima_do_dono = historico.iter().rev().find(|f| !f.do_mundo()).is_some_and(Fala::do_dono);
+    let instrucao = if chamado {
+        "O dono falou com VOCÊ, pelo seu nome: responda a ele, diretamente."
+    } else if ultima_do_dono {
+        "O dono acabou de falar com o bando. Responda a ele."
+    } else {
+        "Continue a conversa com a sua próxima fala."
     };
     format!(
         "Conversa até agora (a mais recente por último):\n{}\n\nSua vez, {nome}. {instrucao} {limite}",
@@ -138,6 +160,74 @@ pub fn normalizar(s: &str) -> String {
             outro => outro.to_ascii_lowercase(),
         })
         .collect()
+}
+
+/// Com quem o dono está falando: os corvos chamados pelo nome no começo da frase
+/// ("Nyx, ..." ou "Nyx e Bran, ..."), ou com vírgula, `?`, `!` ou `@` logo depois do nome
+/// ("concordo com o Bran, Nyx, o que acha?" → Nyx). Sem isso, o primeiro citado.
+pub fn chamados(civ: &Civilizacao, texto: &str) -> Vec<usize> {
+    let norm = normalizar(texto);
+    let tokens: Vec<(String, char)> = {
+        let mut v = Vec::new();
+        let mut atual = String::new();
+        for c in norm.chars().chain(std::iter::once(' ')) {
+            if c.is_alphanumeric() || c == '-' {
+                atual.push(c);
+            } else if !atual.is_empty() {
+                v.push((std::mem::take(&mut atual), c));
+            } else if let Some(ult) = v.last_mut()
+                && ult.1 == ' '
+                && c != ' '
+            {
+                ult.1 = c;
+            }
+        }
+        v
+    };
+    let idx = |w: &str| civ.corvos.iter().position(|c| normalizar(&c.nome) == w);
+    let mut out: Vec<usize> = Vec::new();
+    let add = |i: usize, out: &mut Vec<usize>| {
+        if !out.contains(&i) {
+            out.push(i);
+        }
+    };
+    // 1. Vocativo no começo: "Nyx, ..." / "Nyx e Bran, ..." / "@Nyx ...".
+    let pula =
+        |w: &str| matches!(w, "e" | "oi" | "ola" | "ei" | "eai" | "ai" | "fala" | "salve" | "bom" | "dia" | "boa");
+    for (w, _) in tokens.iter().take(6) {
+        match idx(w) {
+            Some(i) => add(i, &mut out),
+            None if pula(w) => {}
+            None => break,
+        }
+    }
+    if !out.is_empty() {
+        return out;
+    }
+    // 2. Nome seguido de vírgula, ?, ! ou com @ antes. Com artigo ou preposição antes
+    // ("com o Bran", "do Nyx") é só menção, não chamado.
+    let mencao = |w: &str| {
+        matches!(
+            w,
+            "o" | "a" | "do" | "da" | "no" | "na" | "com" | "pro" | "pra" | "ao" | "para" | "de" | "que" | "sobre"
+        )
+    };
+    for (k, (w, depois)) in tokens.iter().enumerate() {
+        if k > 0 && mencao(&tokens[k - 1].0) && !norm.contains(&format!("@{w}")) {
+            continue;
+        }
+        if let Some(i) = idx(w) {
+            let antes_arroba = norm.contains(&format!("@{w}"));
+            let ultimo = k + 1 == tokens.len();
+            if matches!(depois, ',' | '?' | '!' | ':') || antes_arroba || (ultimo && norm.trim_end().ends_with('?')) {
+                add(i, &mut out);
+            }
+        }
+    }
+    if !out.is_empty() {
+        return out;
+    }
+    citado(civ, texto, None).into_iter().collect()
 }
 
 /// O primeiro corvo citado pelo nome em `texto` (sem contar `exceto`), na ordem em que aparece.
@@ -219,7 +309,7 @@ impl Ativacao {
         let ultimo = historico
             .iter()
             .rev()
-            .find(|f| !f.do_dono())
+            .find(|f| !f.do_dono() && !f.do_mundo())
             .and_then(|f| civ.corvos.iter().position(|c| c.nome == f.quem));
         // Quem acabou de falar descansa (mas o dono pode chamá-lo de novo).
         if let Some(u) = ultimo {
@@ -227,10 +317,13 @@ impl Ativacao {
         }
         if let Some(f) = historico.last() {
             if f.do_dono() {
-                match citado(civ, &f.texto, None) {
-                    // O dono chamou: esse corvo responde.
-                    Some(i) => self.nivel[i] += 3.0,
-                    None => self.nivel.iter_mut().for_each(|a| *a += 0.3),
+                let chamados = chamados(civ, &f.texto);
+                if chamados.is_empty() {
+                    self.nivel.iter_mut().for_each(|a| *a += 0.3);
+                }
+                // O dono chamou: quem ele chamou responde.
+                for i in chamados {
+                    self.nivel[i] += 3.0;
                 }
             } else if let Some(i) = citado(civ, &f.texto, Some(f.quem.as_str())) {
                 self.nivel[i] += if f.texto.contains('?') { 1.8 } else { 1.2 };
@@ -245,7 +338,12 @@ impl Ativacao {
         }
         // Quem está calado há mais tempo fica com mais vontade de falar.
         for (i, c) in civ.corvos.iter().enumerate() {
-            let calado = historico.iter().rev().filter(|f| !f.do_dono()).take_while(|f| f.quem != c.nome).count();
+            let calado = historico
+                .iter()
+                .rev()
+                .filter(|f| !f.do_dono() && !f.do_mundo())
+                .take_while(|f| f.quem != c.nome)
+                .count();
             self.nivel[i] += (calado as f32 * 0.06).min(0.6);
         }
         let mut ordem: Vec<usize> = (0..n).collect();
@@ -277,13 +375,23 @@ pub fn pedido_reflexao(nome: &str, acontecimentos: &str, licoes_antigas: &[Strin
     format!(
         "{nome}, hora de refletir para ser um agente autônomo melhor.\n\nO que aconteceu com você:\n{acontecimentos}\n\n\
 Suas lições até agora:\n{antigas}\n\nEscreva de 1 a 3 lições NOVAS, curtas e práticas, sobre como falar, \
-responder, aprender ou agir melhor da próxima vez. Uma por linha, começando com \"- \". Só as lições."
+responder, aprender ou agir melhor da próxima vez. Uma por linha, começando com \"- \".\n\
+Depois, numa linha que começa com \"FICHA:\", reescreva em até 120 palavras quem você é e o que já viveu: com \
+quem tem laços, o que prometeu ou combinou, o que tem e o que planeja. Isso vai com você para as próximas conversas."
     )
+}
+
+/// Lê a ficha (o texto depois de `FICHA:`) da reflexão.
+pub fn ler_ficha(texto: &str) -> Option<String> {
+    let i = texto.find("FICHA:")?;
+    let f = texto[i + "FICHA:".len()..].trim();
+    (!f.is_empty()).then(|| f.chars().take(1500).collect())
 }
 
 /// Lê as lições (linhas que começam com `-`, `*` ou número).
 pub fn ler_licoes(texto: &str) -> Vec<String> {
-    texto
+    let antes_da_ficha = texto.split("FICHA:").next().unwrap_or(texto);
+    antes_da_ficha
         .lines()
         .map(str::trim)
         .filter_map(|l| {
@@ -310,7 +418,24 @@ pub fn limpar(texto: &str, nome: &str, max_palavras: usize) -> String {
     let s = s.trim_matches(|c| c == '"' || c == '“' || c == '”').trim();
     let palavras: Vec<&str> = s.split_whitespace().collect();
     let max = max_palavras.max(1);
-    if palavras.len() > max { format!("{}…", palavras[..max].join(" ")) } else { palavras.join(" ") }
+    // Uma folga pequena antes de cortar (o modelo conta palavras mal).
+    let folga = max + (max / 10).max(2);
+    if palavras.len() <= folga {
+        return palavras.join(" ");
+    }
+    // Passou: termina na última frase completa que cabe, para a ideia não ficar no meio.
+    let fim_de_frase = (0..max).rev().find(|&i| palavras[i].ends_with(['.', '!', '?', '…']));
+    match fim_de_frase {
+        Some(i) if i + 1 >= (max / 3).max(1) => palavras[..=i].join(" "),
+        _ => format!("{}…", palavras[..max].join(" ")),
+    }
+}
+
+/// Se a fala é só o silêncio (o corvo preferiu não falar).
+pub fn eh_silencio(texto: &str) -> bool {
+    let t = normalizar(texto);
+    let t = t.trim_matches(|c: char| !c.is_alphanumeric());
+    t == "silencio" || t.is_empty() || texto.contains(SILENCIO) && texto.split_whitespace().count() <= 3
 }
 
 #[cfg(test)]
@@ -352,6 +477,27 @@ mod tests {
     }
 
     #[test]
+    fn dono_fala_com_quem_ele_chamou() {
+        let c = civ();
+        let (a, b) = (c.corvos[2].nome.clone(), c.corvos[7].nome.clone());
+        // O primeiro nome citado não é o chamado: vale o vocativo.
+        assert_eq!(chamados(&c, &format!("concordo com o {a}, {b}, o que você acha?")), vec![7]);
+        assert_eq!(chamados(&c, &format!("{b}, e o {a} disse o quê?")), vec![7]);
+        assert_eq!(chamados(&c, &format!("oi {a} e {b}, tudo bem?")), vec![2, 7]);
+        assert_eq!(chamados(&c, &format!("e você, {}?", normalizar(&b))), vec![7]);
+        assert_eq!(chamados(&c, &format!("o {a} falou bem")), vec![2]);
+        assert!(chamados(&c, "ninguém aqui").is_empty());
+    }
+
+    #[test]
+    fn le_ficha_e_licoes_separadas() {
+        let t = "- Ser direto.\n- Ouvir mais.\nFICHA: Sou a Nyx, prometi ao Bran ajudar na colheita.";
+        assert_eq!(ler_licoes(t), vec!["Ser direto.", "Ouvir mais."]);
+        assert_eq!(ler_ficha(t).as_deref(), Some("Sou a Nyx, prometi ao Bran ajudar na colheita."));
+        assert_eq!(ler_ficha("- só lição"), None);
+    }
+
+    #[test]
     fn le_licoes_da_reflexao() {
         let l = ler_licoes("Claro!\n- Ser mais direto.\n* Perguntar antes de supor\n1. Usar exemplos\n- quarta demais");
         assert_eq!(l, vec!["Ser mais direto.", "Perguntar antes de supor", "Usar exemplos"]);
@@ -372,10 +518,15 @@ mod tests {
 
     #[test]
     fn primeiro_fala_abre_a_conversa() {
-        assert!(pedido("Nyx", &[], 10).contains("abre"));
+        assert!(pedido("Nyx", &[], 10, false).contains("abre"));
         let h = vec![Fala::nova(DONO, "oi, bando")];
-        assert!(pedido("Nyx", &h, 10).contains("Responda a ele"));
-        assert!(pedido("Nyx", &h, 7).contains("no máximo 7 palavra"));
+        assert!(pedido("Nyx", &h, 10, false).contains("Responda a ele"));
+        assert!(pedido("Nyx", &h, 7, false).contains("no máximo 7 palavra"));
+        assert!(pedido("Nyx", &h, 7, false).contains(SILENCIO));
+        assert!(pedido("Nyx", &h, 7, true).contains("com VOCÊ"));
+        // Aviso do mundo depois do dono não muda a quem responder.
+        let h2 = vec![Fala::nova(DONO, "oi"), Fala::nova(MUNDO, "Nyx comprou 2 sementes")];
+        assert!(pedido("Bran", &h2, 7, false).contains("Responda a ele"));
     }
 
     #[test]
@@ -406,7 +557,7 @@ mod tests {
     #[test]
     fn pedido_usa_so_a_janela_recente() {
         let h: Vec<Fala> = (0..40).map(|i| Fala::nova("Nyx", &format!("fala {i}"))).collect();
-        let s = pedido("Bran", &h, 50);
+        let s = pedido("Bran", &h, 50, false);
         assert!(s.contains("fala 39"));
         assert!(!s.contains("fala 3\n"));
         assert_eq!(s.matches("Nyx:").count(), JANELA);
@@ -479,7 +630,12 @@ mod tests {
     fn limpa_nome_aspas_e_tamanho() {
         assert_eq!(limpar("Nyx: \"Oi,\n bando!\"", "Nyx", 300), "Oi, bando!");
         assert_eq!(limpar("**Nyx:** tudo bem?", "Nyx", 300), "tudo bem?");
-        assert_eq!(limpar("um dois tres quatro", "Nyx", 2), "um dois…");
+        assert_eq!(limpar("um dois tres quatro cinco seis sete", "Nyx", 2), "um dois…");
+        assert_eq!(limpar("um dois tres quatro", "Nyx", 2), "um dois tres quatro", "folga pequena");
+        assert_eq!(limpar("Sim. Eu acho. Mas talvez nao seja bem assim hoje", "Nyx", 3), "Sim. Eu acho.");
+        assert!(eh_silencio("[SILÊNCIO]"));
+        assert!(eh_silencio(" silêncio. "));
+        assert!(!eh_silencio("o silêncio da noite é bonito"));
         assert_eq!(limpar("um", "Nyx", 1), "um");
     }
 }

@@ -384,6 +384,26 @@ impl Civilizacao {
     /// que deixaram) e nascem novos no lugar, por cruzamento e mutação dos que ficaram.
     /// Devolve os nomes dos recém-nascidos.
     pub fn substituir(&mut self, mortos: &[String], modelos: &[Modelo], semente: u64) -> Vec<String> {
+        self.substituir_por(mortos, modelos, semente, |m| {
+            format!(
+                "corvo {} de {} ficou entre os últimos no julgamento (reputação {:.1}, {:.1} MB de memória)",
+                m.genoma.personalidade.nome(),
+                m.genoma.especialidade.nome(),
+                m.reputacao,
+                m.rag_mb
+            )
+        })
+    }
+
+    /// Igual a [`Civilizacao::substituir`], com a lição de cada morto escrita por `licao`
+    /// (ex.: quem morreu de fome).
+    pub fn substituir_por(
+        &mut self,
+        mortos: &[String],
+        modelos: &[Modelo],
+        semente: u64,
+        licao: impl Fn(&Corvo) -> String,
+    ) -> Vec<String> {
         let (saem, ficam): (Vec<Corvo>, Vec<Corvo>) =
             std::mem::take(&mut self.corvos).into_iter().partition(|c| mortos.contains(&c.nome));
         self.corvos = ficam;
@@ -395,13 +415,7 @@ impl Civilizacao {
                 nome: m.nome.clone(),
                 geracao: m.genoma.geracao,
                 reputacao: m.reputacao,
-                licao: format!(
-                    "corvo {} de {} ficou entre os últimos no julgamento (reputação {:.1}, {:.1} MB de memória)",
-                    m.genoma.personalidade.nome(),
-                    m.genoma.especialidade.nome(),
-                    m.reputacao,
-                    m.rag_mb
-                ),
+                licao: licao(m),
             });
         }
         self.geracao += 1;
