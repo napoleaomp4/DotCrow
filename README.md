@@ -47,6 +47,8 @@ Em vez de pedir uma resposta a um chat, você entrega ao **DotCrow** uma tarefa 
 ## ✨ O que ele faz
 
 - 🧠 **Seis corvos, cada um pensa de um jeito.** Eles se revisam entre si antes de qualquer ação, e você vê **cada um pensando ao vivo**, palavra por palavra.
+- 🔮 **O Oráculo decide quantos corvos trabalham.** Ele roda no Opus 5.5 e lê cada pedido antes do bando: um *"Oi"* ele mesmo responde, uma tarefa pequena vai para um corvo só, e as grandes vão para os 6, com o conselho dele para dividir o trabalho. Os corvos usam modelos de tokens baratos (claude-haiku-5-5 e gpt-5-nano).
+- 🔌 **257 conectores.** X, GitHub, Google Drive, Gmail, Notion, Shopify, Mercado Pago, Telegram, WhatsApp, ViaCEP, IBGE… pela API oficial de cada um, com a chave no cofre. Ler é livre; publicar, enviar e apagar pedem a sua confirmação.
 - 🔌 **Qualquer LLM com API.** Claude, GPT, Gemini, OpenRouter, DeepSeek, Groq e modelos locais no Ollama. Acabou a cota de um? O DotCrow **troca para o próximo sozinho**, sem parar a tarefa.
 - 💬 **Converse no meio do caminho.** Mudou de ideia enquanto os corvos trabalham? Mande uma mensagem e eles ajustam o rumo na próxima ação.
 - ↩️ **Nada de entregar errado.** Se o Vigia não aprovar o resultado, a tarefa **volta ao executor** para refazer — você vê o bando pulando e voltando aos corvos.
@@ -123,6 +125,8 @@ dotcrow agentes                                                # conheça os cor
 dotcrow civ conversar                                          # os 10 corvos da civilização conversam (v2)
 dotcrow audio pra post no Twitter                              # você fala, os corvos fazem
 dotcrow celular                                                # o que dá para fazer no Android e como ligar
+dotcrow conectores                                             # os 257 serviços com API (X, GitHub, Drive...)
+dotcrow conectores adicionar github                            # liga um conector (a chave vai para o cofre)
 dotcrow demo troca                                             # veja a troca automática de provedor
 ```
 
@@ -160,6 +164,18 @@ flowchart LR
     P --> M2[Muninn<br/>guarda a receita]
 ```
 
+### 🔮 O Oráculo
+
+Antes do bando, o **Oráculo** (Opus 5.5) lê o pedido e decide quanto ele precisa:
+
+| O pedido | O que acontece |
+|---|---|
+| *"Oi"*, *"obrigado"*, uma pergunta rápida | o Oráculo responde e nenhum corvo trabalha |
+| algo pequeno e sem risco (um texto curto, uma conta, ler um arquivo) | **um corvo só** faz, sem plano nem revisão |
+| várias etapas, arquivos importantes, publicar, enviar, pagar, apagar, dinheiro ou dúvida | **os 6 corvos**, com o conselho do Oráculo para dividir o trabalho |
+
+Os corvos usam modelos de tokens baratos: **claude-haiku-5-5** (Anthropic) e **gpt-5-nano** (OpenAI). O Opus fica só para o Oráculo. Sem a chave da Anthropic, o Oráculo usa a fila de provedores. Se você fixou um modelo em `dotcrow provedores modelo`, ele continua valendo; `dotcrow provedores modelo anthropic padrao` volta ao barato.
+
 Mais em [docs/agentes.md](docs/agentes.md).
 
 ## 🧬 A Civilização dos Corvos (v2)
@@ -179,6 +195,8 @@ dotcrow civ missao Nyx poste no X o resumo do dia    # o Nyx FAZ, com mãos (PC 
 dotcrow civ mortos                  # o Livro dos Mortos
 dotcrow civ modelo Nyx anthropic:claude-haiku-5-5    # troca o modelo de um corvo
 dotcrow civ nova                    # nova Gênese: 10 corvos novos
+dotcrow civ pausar                  # pausa a civilização (o relógio das 24 h para); ficam os 6 corvos
+dotcrow civ retomar                 # volta (os prazos somam o tempo parado)
 ```
 
 **Na conversa** (`dotcrow civ conversar` ou `/civ` no modo terminal):
@@ -222,7 +240,7 @@ dotcrow civ nova                    # nova Gênese: 10 corvos novos
 | 1.5 | Conversa de verdade entre os 10 corvos e com você; suas notas | ✅ |
 | 2 | Julgamento (3 jurados + oráculo + dono), prêmios, morte em 24 h e nascimentos, memória própria com embeddings e livro-razão, reflexão, conversa como neurônios, consultas com Alfândega | ✅ no código |
 | 3 | Missões: os corvos fazem no celular e no computador o que uma pessoa faz (arquivos, programas, terminal, SSH, navegador, mouse e teclado; no Android: ler a tela, tocar, rolar, digitar, botões, print, apps, ligar, SMS), áudio do dono transcrito | ✅ no código |
-| 4 | Mais de 200 conectores (X, Google Drive, GitHub…) com as chaves no cofre | 🟡 |
+| 4 | 257 conectores (X, Google Drive, GitHub…) com as chaves no cofre; o Oráculo divide as tarefas; pausar a civilização | ✅ no código |
 | 5 | Muralha (anonimização), Conselho com voto (>60%), alma exportável, painel estilo WhatsApp | 🟡 |
 
 ### 📱 Os corvos no celular
@@ -251,6 +269,26 @@ No PC, basta o celular no cabo USB com a Depuração USB ligada. **Ligar, mandar
 
 `/audio` no modo terminal (ou escreva *"Áudio pra post no Twitter"*), ou `dotcrow audio pra post no Twitter`: o microfone abre, você fala e aperta Enter. A transcrição usa a sua chave da OpenAI (`gpt-4o-mini-transcribe`) ou, sem ela, a do Groq (Whisper), e vira o pedido para os corvos — que finalizam o texto e publicam pelo caminho que existir (o celular, o navegador, uma API), pedindo a sua confirmação antes de publicar. Os áudios ficam em `Downloads/DotCrow/audios`. Grava pelo Termux:API no celular e por `arecord`, SoX ou `ffmpeg` no computador.
 
+### 🔌 Conectores
+
+São **257 serviços** com API, em 18 categorias: código (GitHub, GitLab, Jira…), nuvem (Vercel, Cloudflare, Hostinger, DigitalOcean…), projetos (Notion, Trello, Asana, ClickUp, Airtable…), arquivos (Google Drive, Dropbox, OneDrive…), e-mail e agenda (Gmail, Google Agenda, Outlook, Brevo, Mailchimp…), mensagens (Telegram, Discord, Slack, WhatsApp Cloud API, Evolution API, Chatwoot…), redes sociais (X, LinkedIn, Instagram, YouTube, TikTok…), lojas e pagamentos (Shopify, WooCommerce, Nuvemshop, Mercado Livre, Mercado Pago, Stripe, Asaas…), IA e dados, busca, clima, mapas e dados públicos do Brasil (ViaCEP, BrasilAPI, IBGE, Banco Central, Câmara, Senado…).
+
+```bash
+dotcrow conectores                          # o catálogo, com o que já está ligado
+dotcrow conectores listar brasil            # busca por nome ou categoria
+dotcrow conectores ver shopify              # endereço da API, formato da chave e onde pegar
+dotcrow conectores adicionar github         # cola o token (não aparece na tela)
+dotcrow conectores adicionar shopify --conta minhaloja.myshopify.com
+dotcrow conectores testar github            # uma leitura de teste
+dotcrow conectores remover github
+```
+
+- A chave vai para o **mesmo cofre cifrado** das chaves de LLM (`con-<serviço>`) e nunca é mostrada. Os corvos usam a ferramenta `conector {servico, metodo, caminho, consulta, corpo}`: a chave entra no pedido só na hora, e é apagada de qualquer resposta.
+- Só dá para falar com o **endereço oficial** de cada serviço: o caminho não troca de site.
+- **Ler (GET) é livre. Escrever (POST, PUT, PATCH, DELETE) pede a sua confirmação sempre**, até no modo livre.
+- 24 conectores são **públicos** e já funcionam sem chave (ViaCEP, BrasilAPI, IBGE, Banco Central, Open-Meteo, Wikipédia, OpenStreetMap…).
+- Serviços que só dão token por OAuth (Google, Microsoft, X…) aceitam, por enquanto, um token de acesso que você cola. Ele expira, e aí é só adicionar de novo. Um token do Google vale para Gmail, Drive, Agenda, Planilhas e YouTube.
+
 ## 🧩 O que já funciona
 
 | Parte | Estado |
@@ -262,6 +300,8 @@ No PC, basta o celular no cabo USB com a Depuração USB ligada. **Ligar, mandar
 | Corvos agindo no computador (terminal, arquivos, navegador, mouse, teclado) | ✅ |
 | Corvos agindo no celular Android: tela, toques, rolagem, digitação, botões, apps, ligações e SMS (`dotcrow celular`) | ✅ |
 | Áudio do dono transcrito virando tarefa (`/audio`, `dotcrow audio`) | ✅ |
+| 257 conectores pela API oficial, com a chave no cofre (`dotcrow conectores`) | ✅ |
+| O Oráculo (Opus 5.5) decide quantos corvos trabalham; corvos em modelos baratos | ✅ |
 | Modo terminal na pasta do projeto, com perguntas, @anexos, pastas extras e desfazer ([docs](docs/terminal.md)) | ✅ |
 | Android pelo Termux | ✅ |
 | Conversa ao vivo e o Vigia mandando refazer | ✅ |
