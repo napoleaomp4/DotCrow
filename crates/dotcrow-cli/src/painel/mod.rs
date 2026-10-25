@@ -644,9 +644,11 @@ async fn create_task(
     let conversa2 = conversa.clone();
     tokio::spawn(async move {
         let aprovador = Arc::new(PainelAprovador { st: st2.clone(), task: id2.clone() });
-        let maos = Maos::new(modo, pasta.clone(), st2.store.dir().to_path_buf(), aprovador, liberados);
+        let maos = Maos::new(modo, pasta.clone(), st2.store.dir().to_path_buf(), aprovador, liberados)
+            .com_conectores(crate::conectores::Conexoes::do_store(&st2.store));
         let memoria = st2.store.master_key().ok().and_then(|k| Memoria::abrir(st2.store.dir(), k).ok());
         let caixa = PainelInbox(inbox);
+        let oraculo = st2.store.oraculo();
         let input = orchestrator::TaskInput {
             request: &text,
             kind,
@@ -656,6 +658,12 @@ async fn create_task(
             // A conversa ao vivo vale no fluxo normal; no modo equipe os corvos trabalham
             // em paralelo e não há um executor único para recolher as mensagens.
             inbox: if equipe { None } else { Some(&caixa as &dyn orchestrator::Inbox) },
+            // O Oráculo (Opus 5.5) decide quantos corvos trabalham; no modo equipe, o bando inteiro.
+            oraculo: if equipe {
+                orchestrator::Oraculo::Desligado
+            } else {
+                orchestrator::Oraculo::Router(oraculo.as_ref().unwrap_or(&router))
+            },
         };
         let emit = |e: Event| push_event(&st2, &id2, e);
         let out = if equipe {

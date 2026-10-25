@@ -912,6 +912,20 @@ pre.cmd { background: var(--surface); border: 1px solid var(--line); border-radi
           el("span", { text: `Ajuste ${ev.round}: o Vigia mandou refazer — ${ev.reason}` })));
         break;
       }
+      case "oraculo": {
+        const fl = $("#flight");
+        const txt = ev.nivel === "conversa" ? "só conversa: respondi direto, sem acionar o bando"
+          : ev.nivel === "simples" ? `tarefa simples: só ${ev.corvos.join(", ")} trabalha`
+          : "o bando inteiro trabalha";
+        if (fl && ev.nivel === "conversa") fl.dataset.conversa = "1";
+        if (fl) fl.append(el("li", { class: "owner-msg" },
+          el("span", { class: "owner-tag", text: "🔮 Oráculo" }),
+          el("span", { text: txt + (ev.conselho ? " — " + ev.conselho : "") })));
+        if (ev.nivel === "conversa") {
+          document.querySelectorAll('#flight .stage[data-state="waiting"]').forEach((n) => (n.dataset.state = "skipped"));
+        }
+        break;
+      }
       case "owner_message": {
         const fl = $("#flight");
         if (fl) fl.append(el("li", { class: "owner-msg" },
@@ -1035,7 +1049,8 @@ pre.cmd { background: var(--surface); border: 1px solid var(--line); border-radi
         break;
       }
       case "finished":
-        $("#final").replaceChildren(el("div", { class: "summary" }, el("h2", { text: "Resumo da Pena" }), el("div", { text: ev.summary })));
+        const soConversa = $("#flight") && $("#flight").dataset.conversa === "1";
+        $("#final").replaceChildren(el("div", { class: "summary" }, el("h2", { text: soConversa ? "Resposta do Oráculo" : "Resumo" }), el("div", { text: ev.summary })));
         renderFiles();
         loadActivity();
         break;
