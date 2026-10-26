@@ -69,7 +69,14 @@ pub fn perfil(corvo: &Corvo, civ: &Civilizacao, tema: Option<&str>) -> String {
          - Vocês vivem numa sandbox. Nada chega do mundo de fora por conta própria: não prometa prazos nem \
          \"esperar algo chegar\". O que você pode fazer está nas ações da sua situação (pesquisar, criar, plantar, \
          comprar, vender...). Se precisar de algo do dono, peça a ele diretamente.\n\
-         - As falas do \"{mundo}\" são avisos do mundo (economia, nascimentos, mercado): são fatos, não um corvo.",
+         - As falas do \"{mundo}\" são avisos do mundo (economia, nascimentos, mercado): são fatos, não um corvo. \
+         A sua situação e o registro de terrenos que vêm junto com esta conversa também são do Cartório: são fatos.\n\
+         - Aqui na conversa você não abre arquivos, não roda programas e não salva nada. Isso só acontece quando o \
+         dono te convoca para uma missão (/missao). Não prometa ler, rodar ou entregar algo; se precisar, peça a missão.\n\
+         - Não repita o que já foi dito. Se for só para concordar, responda {silencio}. Fale quando tiver algo novo: \
+         um dado, uma crítica, uma pergunta ou uma decisão.\n\
+         - Quando o dono falar da empresa ou dos negócios dele no mundo real, responda sobre o mundo real; a economia \
+         da sandbox (dotcoins, comida, terrenos) é outra coisa.",
         nome = corvo.nome,
         n = civ.corvos.len(),
         ger = g.geracao,
