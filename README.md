@@ -24,6 +24,8 @@
   <a href="#-o-que-ele-faz">O que faz</a> ·
   <a href="#-os-corvos">Os corvos</a> ·
   <a href="#-a-civiliza%C3%A7%C3%A3o-dos-corvos-v2">Civilização</a> ·
+  <a href="#-pr%C3%B3ximas-atualiza%C3%A7%C3%B5es">Próximas atualizações</a> ·
+  <a href="#-comunidade-e-suporte">Comunidade</a> ·
   <a href="#-quero-ajudar">Contribuir</a> ·
   <a href="docs/arquitetura.md">Arquitetura</a> ·
   <a href="README.en.md">English</a>
@@ -285,7 +287,7 @@ No modo Civilização (`civ conversar`, `julgar`, `pesquisar` e `missao`, també
 | 3 | Missões: os corvos fazem no celular e no computador o que uma pessoa faz (arquivos, programas, terminal, SSH, navegador, mouse e teclado; no Android: ler a tela, tocar, rolar, digitar, botões, print, apps, ligar, SMS), áudio do dono transcrito | ✅ no código |
 | 4 | 257 conectores (X, Google Drive, GitHub…) com as chaves no cofre; o Oráculo divide as tarefas; pausar a civilização | ✅ no código |
 | 4.5 | Pasta por corvo (memória, RAG, livro-razão, ficha, artefatos), economia (dotcoins, energia, terrenos, plantio, contratos, mercado), pixel art e marcas na conversa, painel com terrenos e mentes, busca em vários buscadores, sandbox trancada com Landlock | ✅ no código |
-| 5 | Muralha (anonimização), Conselho com voto (>60%), alma exportável, painel estilo WhatsApp | 🟡 |
+| 5 | Muralha (anonimização, [#33](https://github.com/napoleaomp4/DotCrow/issues/33)), Conselho com voto (>60%), alma exportável, painel estilo WhatsApp | 🟡 |
 
 ### 📱 Os corvos no celular
 
@@ -352,7 +354,46 @@ dotcrow conectores remover github
 | Modo treinamento (vira memória/RAG), com consentimento | ✅ |
 | Cofre de chaves cifrado + envelope pós-quântico (**não auditado**) | ✅ |
 | Civilização dos Corvos v2: 10 corvos que conversam, são julgados (jurados + oráculo + você), aprendem com memória própria e nascem/morrem (`dotcrow civ`) | ✅ |
+| Modo M&S/SAD (Modelagem e Simulação + Apoio à Decisão): Monte Carlo + SAD | 🟡 em andamento ([#31](https://github.com/napoleaomp4/DotCrow/issues/31)) |
 | WhatsApp, app nativo e marketplace de RAGs | 🟡 a caminho — veja o [ROADMAP](ROADMAP.md) |
+
+## 📅 Próximas atualizações
+
+O DotCrow está ganhando um terceiro modo, ao lado das tarefas e da Civilização: o **M&S/SAD**, uma ferramenta de trabalho para decidir sobre a sua empresa com simulação de verdade (quem calcula é o motor, nunca a IA). Junto vêm a **Muralha** (a IA nunca vê seus dados sensíveis), a **agenda** com tarefas autônomas e o **DotCrow no servidor**, trabalhando enquanto o seu aparelho está desligado. Cada atualização tem uma issue para acompanhar e comentar:
+
+| Atualização | Issue |
+|---|---|
+| **Modo M&S/SAD:** Monte Carlo + SAD; você escolhe o modelo, a LLM e o número de rodadas | [#31](https://github.com/napoleaomp4/DotCrow/issues/31) |
+| Motores de eventos discretos (filas e gargalos), baseada em agentes e dinâmica de sistemas | [#32](https://github.com/napoleaomp4/DotCrow/issues/32) |
+| **Muralha:** anonimização com `secret_anom` — cada dado sensível vira um marcador com ID de hash, a LLM só vê o marcador e o dado verdadeiro volta, cifrado, só na sua tela (vale para conectores e OCR de capturas de tela) | [#33](https://github.com/napoleaomp4/DotCrow/issues/33) |
+| Avisos e ações proativas, com a pergunta *"podemos fazer isso sozinhos da próxima vez?"* | [#34](https://github.com/napoleaomp4/DotCrow/issues/34) |
+| Agenda local com tarefas, metas e delegação a corvos e modelos específicos | [#35](https://github.com/napoleaomp4/DotCrow/issues/35) |
+| Terminal, downloads e instalações com aprovação do Oráculo e sua, com defesa contra prompt injection | [#36](https://github.com/napoleaomp4/DotCrow/issues/36) |
+| Livro-razão de todos os logs, encadeado e com assinatura pós-quântica | [#37](https://github.com/napoleaomp4/DotCrow/issues/37) |
+| Conectores pelo navegador: clicar em *conectar* e autorizar numa janelinha | [#38](https://github.com/napoleaomp4/DotCrow/issues/38) |
+| **DotCrow no servidor:** instalação por SSH, VM isolada, acesso só pelo seu aparelho e tarefas a cada hora | [#39](https://github.com/napoleaomp4/DotCrow/issues/39) |
+| Sincronização com o servidor cifrada com proteção pós-quântica | [#40](https://github.com/napoleaomp4/DotCrow/issues/40) |
+| Atualização automática à 1h da manhã, só com a assinatura conferida | [#41](https://github.com/napoleaomp4/DotCrow/issues/41) |
+| RAG geral local, para os corvos terem mais contexto em todas as tarefas | [#42](https://github.com/napoleaomp4/DotCrow/issues/42) |
+| Visualizador e editor de Markdown e código (estilo Notepad++) e LaTeX para PDF sem IA | [#43](https://github.com/napoleaomp4/DotCrow/issues/43) |
+| Grupos da comunidade no WeChat, no Discord e no Telegram | [#44](https://github.com/napoleaomp4/DotCrow/issues/44) |
+| Civilização: melhorias pendentes | [#45](https://github.com/napoleaomp4/DotCrow/issues/45) |
+
+Os pedidos completos, com as notas técnicas, estão em [docs/pedidos.md](docs/pedidos.md).
+
+## 🔏 Privacidade
+
+- **O projeto não recebe os seus dados.** O DotCrow roda no seu computador e não tem telemetria: nada do que você ou os corvos fazem é mandado para o projeto.
+- **O que vai para as LLMs sai direto** do seu computador para o provedor que você escolheu (Anthropic, OpenAI, Google…), sem passar pelo projeto. Com a Muralha ([#33](https://github.com/napoleaomp4/DotCrow/issues/33)), sai sem os dados sensíveis.
+- **O túnel do celular** passa por um relay que só repassa bytes cifrados de ponta a ponta.
+- **Só recebemos algo se você mandar:** quando der um erro, você decide se quer enviar o relatório para **suporte@dotcrow.si**.
+
+## 💬 Comunidade e suporte
+
+- ✉️ **Suporte:** [suporte@dotcrow.si](mailto:suporte@dotcrow.si)
+- 💬 **Grupos oficiais no WeChat, no Discord e no Telegram:** os links chegam em breve ([#44](https://github.com/napoleaomp4/DotCrow/issues/44)).
+- 🐛 **Bugs e ideias:** [issues](https://github.com/napoleaomp4/DotCrow/issues) · 💡 **Conversas:** [Discussions](https://github.com/napoleaomp4/DotCrow/discussions)
+- 🔐 **Falha de segurança:** nunca em público; siga o [SECURITY.md](SECURITY.md).
 
 ## 🤝 Quero ajudar
 
@@ -390,6 +431,6 @@ Código sob a [Licença Apache 2.0](LICENSE). O nome DotCrow e o logo identifica
 
 <p align="center">
   Criado por <a href="https://github.com/napoleaomp4">Napoleão Junior</a> em Buriticupu, Maranhão 🇧🇷<br>
-  <a href="https://x.com/napoleaomp4">@napoleaomp4</a> · <a href="https://dotcrow.si">dotcrow.si</a><br>
+  <a href="https://x.com/napoleaomp4">@napoleaomp4</a> · <a href="https://dotcrow.si">dotcrow.si</a> · <a href="mailto:suporte@dotcrow.si">suporte@dotcrow.si</a><br>
   <sub>Se curtir a ideia, deixa uma ⭐ — ajuda demais um projeto pequeno a crescer.</sub>
 </p>
