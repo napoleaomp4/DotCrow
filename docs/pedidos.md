@@ -19,6 +19,7 @@ Registro dos pedidos de 26/10/2026 (itens 1 a 15), com o que já foi feito, o qu
 | 13 | LaTeX para PDF sem IA | ⏳ · [#43](https://github.com/napoleaomp4/DotCrow/issues/43) |
 | 14 | Privacidade: nenhum dado de usuário com o projeto | ✅ escrito na página inicial · [#44](https://github.com/napoleaomp4/DotCrow/issues/44) |
 | 15 | Suporte e comunidade (e-mail, WeChat, Discord, Telegram) | 🟡 faltam os links dos grupos · [#44](https://github.com/napoleaomp4/DotCrow/issues/44) |
+| 16 | Trava de sessão: desbloqueio girando 3 discos, vale 30 minutos | ⏳ · [#47](https://github.com/napoleaomp4/DotCrow/issues/47) |
 
 ---
 
@@ -179,6 +180,19 @@ Também pede cuidado constante com prompt injection, para que códigos malicioso
 **Pedido:** e-mail oficial do projeto **suporte@dotcrow.si** e grupos oficiais da comunidade no **WeChat**, no **Discord** e no **Telegram**. Essas informações e todas as novas atualizações vão para a página inicial do GitHub, em português e em inglês, e as novas atualizações viram issues no GitHub.
 
 **Falta:** os links dos três grupos, para entrarem na página inicial.
+
+## 16. Trava de sessão com 3 discos
+
+**Pedido:** toda vez que o app for aberto para escrever ou enviar documentos (aba de pedidos ou envio de anexos), essa parte fica **bloqueada** e é preciso iniciar uma sessão. Assim, outra máquina, uma IA ou um agente mal-intencionado não usa o DotCrow no lugar do dono. Depois de **30 minutos**, ou quando o dono clicar em fechar a aba de entradas, nenhum agente externo fica autorizado a mexer no DotCrow.
+
+**Desbloqueio:** o dono gira **3 discos**, um em cada uma das **3 telas**, até alinhar o desenho na sua brecha. Por padrão, cada disco pode ser girado no sentido horário ou anti-horário.
+
+**Notas técnicas:**
+- Hoje o painel aceita qualquer chamada com o código de acesso (`painel.token`, 80 bits), sem prazo. A trava acrescenta um código de sessão curto, que só sai depois do desbloqueio e é exigido por toda chamada que escreve ou envia (pedidos, anexos, mensagens aos corvos, celular pelo túnel remoto).
+- O desafio nasce no DotCrow (ângulos iniciais sorteados) e o DotCrow confere o encaixe; a tela só manda os giros. Limite de tentativas, com espera maior a cada erro.
+- Fechar a aba, ou a aba parar de dar sinal, encerra a sessão na hora. No modo terminal, os mesmos discos com as setas do teclado.
+- **Cuidado honesto:** uma IA com visão que controle a tela e o mouse consegue resolver um quebra-cabeça só visual. Para barrar isso, o encaixe precisa de algo que só o dono sabe: opção de fixar o sentido de cada disco (ou escolher o desenho de cada tela) como segredo. Camada opcional: Windows Hello, passkey ou chave de segurança.
+- Alternativa acessível para quem não consegue girar os discos (por exemplo, uma frase secreta).
 
 ---
 
