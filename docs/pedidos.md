@@ -1,16 +1,24 @@
 # Pedidos do dono para o DotCrow
 
-Registro dos pedidos de 26/10/2026, com o que já foi feito, o que está em andamento e o que vem depois. Cada item guarda o pedido como foi feito e, quando há, uma nota técnica sobre a implementação.
+Registro dos pedidos de 26/10/2026 (itens 1 a 15), com o que já foi feito, o que está em andamento e o que vem depois. Cada item guarda o pedido como foi feito e, quando há, uma nota técnica sobre a implementação.
 
-| # | Pedido | Estado |
+| # | Pedido | Estado e issue |
 |---|---|---|
-| 1 | Modo M&S/SAD com Monte Carlo + SAD | 🟡 em andamento |
-| 2 | Anonimização com `secret_anom` | ⏳ próximo |
-| 3 | Avisos e ações proativas com RAG local | ⏳ |
-| 4 | Agenda local, metas e delegação aos corvos | ⏳ |
-| 5 | Terminal, downloads e instalação com Oráculo + dono | ⏳ |
-| 6 | Logs com livro-razão encadeado e pós-quântico | ⏳ |
-| 7 | Conectores pelo navegador (janela de autorização) | ⏳ |
+| 1 | Modo M&S/SAD com Monte Carlo + SAD | 🟡 em andamento · [#31](https://github.com/napoleaomp4/DotCrow/issues/31) |
+| 2 | Anonimização com `secret_anom` | ⏳ próximo · [#33](https://github.com/napoleaomp4/DotCrow/issues/33) |
+| 3 | Avisos e ações proativas com RAG local | ⏳ · [#34](https://github.com/napoleaomp4/DotCrow/issues/34) |
+| 4 | Agenda local, metas e delegação aos corvos | ⏳ · [#35](https://github.com/napoleaomp4/DotCrow/issues/35) |
+| 5 | Terminal, downloads e instalação com Oráculo + dono | ⏳ · [#36](https://github.com/napoleaomp4/DotCrow/issues/36) |
+| 6 | Logs com livro-razão encadeado e pós-quântico | ⏳ · [#37](https://github.com/napoleaomp4/DotCrow/issues/37) |
+| 7 | Conectores pelo navegador (janela de autorização) | ⏳ · [#38](https://github.com/napoleaomp4/DotCrow/issues/38) |
+| 8 | DotCrow no servidor: SSH, tarefas a cada hora, VM isolada | ⏳ · [#39](https://github.com/napoleaomp4/DotCrow/issues/39) |
+| 9 | Atualização automática à 1h da manhã | ⏳ · [#41](https://github.com/napoleaomp4/DotCrow/issues/41) |
+| 10 | Sincronização com o servidor cifrada (pós-quântica) | ⏳ · [#40](https://github.com/napoleaomp4/DotCrow/issues/40) |
+| 11 | RAG geral local | ⏳ · [#42](https://github.com/napoleaomp4/DotCrow/issues/42) |
+| 12 | Visualizador e editor de Markdown e código | ⏳ · [#43](https://github.com/napoleaomp4/DotCrow/issues/43) |
+| 13 | LaTeX para PDF sem IA | ⏳ · [#43](https://github.com/napoleaomp4/DotCrow/issues/43) |
+| 14 | Privacidade: nenhum dado de usuário com o projeto | ✅ escrito na página inicial · [#44](https://github.com/napoleaomp4/DotCrow/issues/44) |
+| 15 | Suporte e comunidade (e-mail, WeChat, Discord, Telegram) | 🟡 faltam os links dos grupos · [#44](https://github.com/napoleaomp4/DotCrow/issues/44) |
 
 ---
 
@@ -118,6 +126,62 @@ Também pede cuidado constante com prompt injection, para que códigos malicioso
 
 ---
 
+## 8. DotCrow no servidor
+
+**Pedido:** o usuário pode informar o SSH e a senha do servidor onde o DotCrow será instalado. Lá, o DotCrow:
+
+- roda tarefas agendadas por cron **a cada hora**: olha as tarefas a fazer e, se já houver uma agendada, faz sozinho, como um agente autônomo de verdade;
+- guarda o **SSH e a senha criptografados**;
+- só pode ser acessado **por SSH e senha a partir do aparelho do usuário**;
+- **continua rodando** normalmente com os dados que tem quando o aparelho fica offline (por um momento ou por um dia), dentro de uma **máquina virtual que ninguém acessa**, usada única e exclusivamente para rodar o DotCrow.
+
+**Notas técnicas:**
+
+- **Chave em vez de senha:** é mais seguro entrar por **chave SSH** (a privada fica só no aparelho do dono) e desligar o login por senha. A senha pode ficar só para a primeira instalação.
+- **O limite do dono do servidor:** para o DotCrow trabalhar no servidor com o aparelho desligado, ele precisa decifrar os dados lá, na memória. Numa VPS comum, quem controla a máquina física (o provedor) consegue, em tese, ler essa memória, e uma VM dentro da VPS não impede isso. Só uma **VM confidencial** (AMD SEV-SNP ou Intel TDX, oferecida por alguns provedores de nuvem) protege a memória até do provedor. Sem ela, o que dá para garantir é: dados cifrados no disco, nenhuma chave em texto puro, acesso só por chave e o mínimo de dados decifrados ao mesmo tempo.
+
+## 9. Atualização automática
+
+**Pedido:** o DotCrow se atualiza sozinho quando houver versão nova no GitHub, mas sempre à noite, à **uma da madrugada**.
+
+**Nota técnica:** atualizar sozinho a partir da internet é a porta preferida para ataque à cadeia de fornecimento. A versão nova só é instalada se a **assinatura do release** conferir; se falhar, volta para a anterior e avisa o dono.
+
+## 10. Sincronização cifrada com o servidor
+
+**Pedido:** os arquivos que sincronizam com o servidor vão **inteiramente criptografados**, com proteção pós-quântica, para que nem o dono do servidor, nem um funcionário dele, nem um invasor consiga ver ou interpretar os dados, com nenhuma ferramenta.
+
+**Nota técnica:** o DotCrow já tem o envelope híbrido pós-quântico (ML-KEM-768 + X25519 + XChaCha20-Poly1305). O que fica parado no servidor sai cifrado com a chave do aparelho do dono e é ilegível para todos. A ressalva é a do item 8: o que o DotCrow processa no servidor precisa ser decifrado lá enquanto ele trabalha.
+
+## 11. RAG geral local
+
+**Pedido:** um RAG geral do DotCrow, no próprio computador, que facilite o trabalho dos corvos, dando a eles mais contexto para trabalhar e fazer as tarefas.
+
+**Nota técnica:** para nada sair do computador, o embedding é local (vetor local, ou um modelo de embedding que roda na máquina), e o texto passa antes pela anonimização (item 2).
+
+## 12. Visualizador e editor de Markdown e código
+
+**Pedido:** um visualizador próprio de Markdown e de código, para alterações e revisões manuais, como um Notepad++. Os ícones de visualização ficam **no canto superior direito da janela**.
+
+## 13. LaTeX para PDF sem IA
+
+**Pedido:** o DotCrow lê LaTeX e, **sem usar IA**, transforma em PDF (por exemplo, para uso acadêmico).
+
+**Nota técnica:** isso precisa de um motor TeX. O Tectonic é escrito em Rust e cabe no DotCrow, mas baixa os pacotes do LaTeX na primeira vez. A outra opção é usar o `pdflatex` do sistema, quando instalado.
+
+## 14. Privacidade
+
+**Pedido:** jamais teremos informações nem logs de outros usuários, a não ser que, depois de algum erro, o próprio usuário reporte o problema e mande para o e-mail oficial do projeto.
+
+**Nota técnica:** o DotCrow não tem telemetria (conferido no código). O que vai para as LLMs sai direto do computador do usuário para o provedor que ele escolheu, sem passar pelo projeto. Com a anonimização, sai sem os dados sensíveis.
+
+## 15. Suporte e comunidade
+
+**Pedido:** e-mail oficial do projeto **suporte@dotcrow.si** e grupos oficiais da comunidade no **WeChat**, no **Discord** e no **Telegram**. Essas informações e todas as novas atualizações vão para a página inicial do GitHub, em português e em inglês, e as novas atualizações viram issues no GitHub.
+
+**Falta:** os links dos três grupos, para entrarem na página inicial.
+
+---
+
 ## Pedidos e ofertas anteriores ainda em aberto
 
 - [ ] PR #30, "Conversa sem trava" (extrato oficial do Cartório, registro de terrenos, modelo fixo por corvo, substituto do corvo morto): falta conferir o CI e fazer o merge.
@@ -127,3 +191,5 @@ Também pede cuidado constante com prompt injection, para que códigos malicioso
 - [ ] Regra opcional: colher a própria plantação pronta antes de dormir (muda a regra de morte; só com aprovação do dono).
 - [ ] Trazer um corvo morto de volta com a alma dele (`mortos/`).
 - [ ] Comando `dotcrow civ departamento sad <arquivo.json>`, que passa a fazer parte do modo M&S/SAD.
+
+Motores de eventos discretos, baseada em agentes e dinâmica de sistemas: [#32](https://github.com/napoleaomp4/DotCrow/issues/32). Melhorias da Civilização: [#45](https://github.com/napoleaomp4/DotCrow/issues/45).
