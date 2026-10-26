@@ -378,6 +378,7 @@ O DotCrow está ganhando um terceiro modo, ao lado das tarefas e da Civilizaçã
 | Visualizador e editor de Markdown e código (estilo Notepad++) e LaTeX para PDF sem IA | [#43](https://github.com/napoleaomp4/DotCrow/issues/43) |
 | Grupos da comunidade no WeChat, no Discord e no Telegram | [#44](https://github.com/napoleaomp4/DotCrow/issues/44) |
 | Civilização: melhorias pendentes | [#45](https://github.com/napoleaomp4/DotCrow/issues/45) |
+| **Trava de sessão:** para escrever ou enviar anexos, o dono desbloqueia girando 3 discos até cada desenho encaixar na brecha; vale 30 minutos ou até fechar a aba, e nenhuma outra máquina, IA ou agente usa o DotCrow no seu lugar | [#47](https://github.com/napoleaomp4/DotCrow/issues/47) |
 
 Os pedidos completos, com as notas técnicas, estão em [docs/pedidos.md](docs/pedidos.md).
 

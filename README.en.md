@@ -382,6 +382,7 @@ DotCrow is getting a third mode, next to tasks and the Civilization: **M&S/SAD**
 | Markdown and code viewer/editor (Notepad++ style) and LaTeX to PDF without AI | [#43](https://github.com/napoleaomp4/DotCrow/issues/43) |
 | Community groups on WeChat, Discord and Telegram | [#44](https://github.com/napoleaomp4/DotCrow/issues/44) |
 | Civilization: pending improvements | [#45](https://github.com/napoleaomp4/DotCrow/issues/45) |
+| **Session lock:** to write or send attachments, you unlock by turning 3 discs until each drawing fits its slot; it lasts 30 minutes or until you close the tab, so no other machine, AI or agent uses DotCrow in your place | [#47](https://github.com/napoleaomp4/DotCrow/issues/47) |
 
 The full requests, with technical notes, are in [docs/pedidos.md](docs/pedidos.md) (Portuguese).
 
