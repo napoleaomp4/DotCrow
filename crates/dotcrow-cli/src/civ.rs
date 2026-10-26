@@ -108,9 +108,13 @@ impl Estado {
     pub fn civilizacao(&self) -> Result<Civilizacao> {
         let modelos = ler_modelos(&self.modelos.join(","))?;
         let mut civ = self.base()?;
-        for (i, c) in civ.corvos.iter_mut().enumerate() {
-            if let Some(m) = modelos.get(i % modelos.len()) {
-                c.definir_modelo(m.clone());
+        // Cada corvo fica com o modelo com que nasceu. Só quem nasceu num modelo que saiu do
+        // rodízio ganha outro, sempre o mesmo para o mesmo nome (pela posição, os modelos
+        // trocavam de corvo a cada morte e nascimento).
+        for c in &mut civ.corvos {
+            if !modelos.contains(&c.genoma.modelo) {
+                let m = modelos[modelo_fixo(&c.nome, modelos.len())].clone();
+                c.definir_modelo(m);
             }
         }
         for (nome, m) in &self.por_corvo {
@@ -200,6 +204,51 @@ fn garantir_economia(pasta: &Path, e: &mut Estado) -> Vec<Linha> {
     let vivos = e.vivos();
     let ev = e.economia.garantir(&vivos, &mut Rng::new(relogio()));
     anotar_mundo(pasta, e, &ev)
+}
+
+/// O índice fixo de um modelo para o corvo `nome` (FNV-1a do nome).
+fn modelo_fixo(nome: &str, n: usize) -> usize {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in nome.bytes() {
+        h ^= u64::from(b);
+        h = h.wrapping_mul(0x0100_0000_01b3);
+    }
+    (h % n.max(1) as u64) as usize
+}
+
+/// Corvos mortos que o dono chamou pelo nome: para cada um, um corvo vivo responde no
+/// lugar (o de melhor reputação que ainda não foi chamado e não está dormindo).
+/// Devolve (morto, substituto).
+pub fn substitutos_dos_mortos(
+    civ: &Civilizacao,
+    texto: &str,
+    ja_chamados: &[String],
+    dormindo: impl Fn(&str) -> bool,
+) -> Vec<(String, String)> {
+    let palavras: Vec<String> = conversa::normalizar(texto)
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .map(str::to_string)
+        .collect();
+    let vivo = |n: &str| civ.corvos.iter().any(|c| conversa::normalizar(&c.nome) == conversa::normalizar(n));
+    let mut mortos: Vec<String> = Vec::new();
+    for b in &civ.livro_dos_mortos {
+        let alvo = conversa::normalizar(&b.nome);
+        if !vivo(&b.nome) && palavras.contains(&alvo) && !mortos.contains(&b.nome) {
+            mortos.push(b.nome.clone());
+        }
+    }
+    let mut usados: Vec<String> = ja_chamados.to_vec();
+    let mut out = Vec::new();
+    for morto in mortos {
+        let sub =
+            civ.ranking().into_iter().find(|c| !usados.contains(&c.nome) && !dormindo(&c.nome)).map(|c| c.nome.clone());
+        if let Some(sub) = sub {
+            usados.push(sub.clone());
+            out.push((morto, sub));
+        }
+    }
+    out
 }
 
 /// Reputação depois das notas: a média entre a reputação de nascença e cada nota dada
@@ -1475,8 +1524,21 @@ pub async fn conversar(
                                 modelo: String::new(),
                             };
                             let _ = civ_visual::anotar(pasta, &linha);
-                            let chamados: Vec<String> =
+                            let mut chamados: Vec<String> =
                                 conversa::chamados(&civ, &texto).into_iter().map(|i| civ.corvos[i].nome.clone()).collect();
+                            // Chamou um corvo que já morreu: outro vivo responde no lugar dele.
+                            let agora_t = agora();
+                            let subs = substitutos_dos_mortos(&civ, &texto, &chamados, |nome| {
+                                estado.economia.dormindo(nome, agora_t)
+                            });
+                            let avisos: Vec<Evento> = subs
+                                .iter()
+                                .map(|(morto, sub)| Evento {
+                                    texto: format!("⚰ {morto} já morreu; {sub} responde no lugar dele."),
+                                    envolvidos: Vec::new(),
+                                })
+                                .collect();
+                            chamados.extend(subs.into_iter().map(|(_, sub)| sub));
                             let para = if chamados.is_empty() { "o bando".to_string() } else { chamados.join(", ") };
                             println!("  {} {}", civ_visual::marca(n, cores), p.dim(&format!("sua fala, para {para}")));
                             for nome in chamados {
@@ -1487,6 +1549,11 @@ pub async fn conversar(
                             }
                             historico.push(Fala::nova(conversa::DONO, &texto));
                             recentes.push(linha);
+                            for l in anotar_mundo(pasta, &mut estado, &avisos) {
+                                mostrar_mundo(p, &l);
+                                historico.push(Fala::nova(conversa::MUNDO, &l.texto));
+                                recentes.push(l);
+                            }
                             break;
                         }
                     },
@@ -2042,6 +2109,53 @@ mod tests {
         // Pausada, o relógio não anda.
         e.pausada_desde = Some(agora());
         assert!(passo_da_economia(&d, &mut e).unwrap_or_else(|e| panic!("{e}")).0.is_empty());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn cada_corvo_fica_com_o_seu_modelo() {
+        let d = pasta_teste();
+        let mut e = abrir(&d, Some(5), None).unwrap_or_else(|e| panic!("{e}"));
+        let antes: HashMap<String, String> = e
+            .civilizacao()
+            .unwrap_or_else(|e| panic!("{e}"))
+            .corvos
+            .into_iter()
+            .map(|c| (c.nome, rotulo(&c.genoma.modelo)))
+            .collect();
+        // Morre o primeiro e nasce outro: as posições mudam, os modelos dos outros não.
+        let primeiro = nomes(&e)[0].clone();
+        let modelos = ler_modelos(&e.modelos.join(",")).unwrap_or_else(|e| panic!("{e}"));
+        e.populacao_mut().unwrap_or_else(|e| panic!("{e}")).substituir(std::slice::from_ref(&primeiro), &modelos, 9);
+        let depois = e.civilizacao().unwrap_or_else(|e| panic!("{e}"));
+        for c in &depois.corvos {
+            if let Some(m) = antes.get(&c.nome) {
+                assert_eq!(m, &rotulo(&c.genoma.modelo), "{} trocou de modelo", c.nome);
+            }
+        }
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn quem_responde_pelo_corvo_morto() {
+        let d = pasta_teste();
+        let mut e = abrir(&d, Some(5), None).unwrap_or_else(|e| panic!("{e}"));
+        let morto = nomes(&e)[3].clone();
+        let modelos = ler_modelos(&e.modelos.join(",")).unwrap_or_else(|e| panic!("{e}"));
+        e.populacao_mut().unwrap_or_else(|e| panic!("{e}")).substituir(std::slice::from_ref(&morto), &modelos, 9);
+        let civ = e.civilizacao().unwrap_or_else(|e| panic!("{e}"));
+        let vivo = civ.corvos[0].nome.clone();
+        let subs = substitutos_dos_mortos(
+            &civ,
+            &format!("{}, o que acha?", morto.to_lowercase()),
+            std::slice::from_ref(&vivo),
+            |_| false,
+        );
+        assert_eq!(subs.len(), 1);
+        assert_eq!(subs[0].0, morto);
+        assert_ne!(subs[0].1, vivo, "não repete quem já foi chamado");
+        assert!(civ.corvos.iter().any(|c| c.nome == subs[0].1));
+        assert!(substitutos_dos_mortos(&civ, "oi bando", &[], |_| false).is_empty());
         let _ = std::fs::remove_dir_all(&d);
     }
 

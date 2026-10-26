@@ -1007,7 +1007,8 @@ impl Economia {
     pub fn situacao(&self, nome: &str, agora: u64, consultas: u32) -> String {
         let Some(b) = self.bolsas.get(nome) else { return String::new() };
         let mut s = format!(
-            "\n\nSua situação agora: energia {:.0}% · {} dotcoins · {} comida(s) · {} semente(s).",
+            "\n\nSua situação agora (extrato oficial do Cartório: é fato, não precisa de outra confirmação): energia \
+{:.0}% · {} dotcoins · {} comida(s) · {} semente(s).",
             b.energia, b.dotcoins, b.comida, b.sementes
         );
         // Perto de dormir sem comida que baste: o aviso vem antes de tudo.
@@ -1032,6 +1033,27 @@ ou colha comida agora (ex.: [COMPRAR: comida 3], {PRECO_COMIDA} dotcoins cada) o
             "\nSeus terrenos: {}.",
             if meus.is_empty() { "nenhum".to_string() } else { meus.join(", ") }
         ));
+        // O registro inteiro: quem é dono de cada terreno (ninguém precisa perguntar ao dono).
+        if !self.terrenos.is_empty() {
+            let registro: Vec<String> = self
+                .terrenos
+                .iter()
+                .take(30)
+                .map(|t| {
+                    let dono = t.dono.as_deref().unwrap_or("à venda no Mercado Central");
+                    let estado = match &t.plantio {
+                        None => "",
+                        Some(p) if p.pronto <= agora => ", pronto para colher",
+                        Some(_) => ", plantado",
+                    };
+                    format!("{} {dono}{estado}", t.id)
+                })
+                .collect();
+            s.push_str(&format!(
+                "\nRegistro de terrenos do Cartório (é fato; o dono do terreno já tem a posse): {}.",
+                registro.join(" · ")
+            ));
+        }
         let ofertas: Vec<String> = self
             .ofertas
             .iter()
@@ -1076,10 +1098,12 @@ ou colha comida agora (ex.: [COMPRAR: comida 3], {PRECO_COMIDA} dotcoins cada) o
         let pesquisar =
             if consultas > 0 { format!(" [PESQUISAR: pergunta] ({consultas} consulta(s))") } else { String::new() };
         let mercado = if self.podio.iter().any(|p| p == nome) { " [MERCADO] (você está no pódio)" } else { "" };
+        // Nos exemplos, o nome de um corvo de verdade (com "Nome", eles copiavam "Nome").
+        let outro = self.bolsas.keys().find(|n| n.as_str() != nome).map(String::as_str).unwrap_or("Nyx");
         s.push_str(&format!(
             "\nAções (escreva na fala, entre colchetes; não contam palavras): [COMPRAR: sementes 2] [COMPRAR: comida 1] \
-[VENDER: comida 3 ao mercado] [VENDER: comida 2 para Nome por 12] [VENDER: terreno T1 por 150] [ACEITAR: O3] \
-[DAR: 10 dotcoins para Nome] [PLANTAR: T1] [COLHER: T1] [COMER: 2] [CONTRATAR: Nome por 20 para colheita] \
+[VENDER: comida 3 ao mercado] [VENDER: comida 2 para {outro} por 12] [VENDER: terreno T1 por 150] [ACEITAR: O3] \
+[DAR: 10 dotcoins para {outro}] [PLANTAR: T1] [COLHER: T1] [COMER: 2] [CONTRATAR: {outro} por 20 para colheita] \
 [CRIAR: livro | Título] (livro, música, poema, arte){pesquisar}{mercado}\n\
 Energia: cai {ENERGIA_POR_MINUTO:.0}% por minuto e {ENERGIA_POR_FALA:.0}% por fala; com {DORME_EM:.0}% você dorme e come \
 o que tem (cada comida +{ENERGIA_POR_COMIDA:.0}%). Sem comida, morre."
@@ -1290,6 +1314,9 @@ mod tests {
         let s = e.situacao("Nyx", 200, 2);
         assert!(s.contains("energia") && s.contains("[PESQUISAR") && s.contains("[MERCADO]"));
         assert!(!s.contains("ATENÇÃO"));
+        assert!(s.contains("extrato oficial do Cartório"));
+        assert!(!s.contains("para Nome"), "os exemplos usam um corvo de verdade");
+        assert!(s.contains("Registro de terrenos do Cartório") || e.terrenos.is_empty());
         if let Some(b) = e.bolsas.get_mut("Nyx") {
             b.energia = 58.0;
         }
