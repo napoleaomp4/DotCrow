@@ -19,6 +19,7 @@ pub mod alinhamento;
 pub mod civilizacao;
 pub mod hands;
 pub mod orchestrator;
+pub mod rumo;
 pub mod triagem;
 
 /// A memória de longo prazo do DotCrow (o RAG do Muninn): o que o bando lembra do dono.

@@ -315,6 +315,32 @@ No PC, basta o celular no cabo USB com a Depuração USB ligada. **Ligar, mandar
 
 `/audio` no modo terminal (ou escreva *"Áudio pra post no Twitter"*), ou `dotcrow audio pra post no Twitter`: o microfone abre, você fala e aperta Enter. A transcrição usa a sua chave da OpenAI (`gpt-4o-mini-transcribe`) ou, sem ela, a do Groq (Whisper), e vira o pedido para os corvos — que finalizam o texto e publicam pelo caminho que existir (o celular, o navegador, uma API), pedindo a sua confirmação antes de publicar. Os áudios ficam em `Downloads/DotCrow/audios`. Grava pelo Termux:API no celular e por `arecord`, SoX ou `ffmpeg` no computador.
 
+### 🗺 Tarefas longas, do começo ao fim
+
+Para um projeto inteiro (um programa, um site, uma pesquisa grande, centenas de arquivos), o corvo não anda em linha reta:
+
+- **Plano vivo:** a primeira ação é montar um checklist (`plano`), e ele marca cada item como fazendo, feito ou pulado (com motivo). Você acompanha ao vivo no painel e no terminal.
+- **Ciclo de profissional:** entender → fazer → conferir (rodar, testar, ler de novo) → corrigir. Ele **não pode concluir** com itens abertos nem sem conferir o que mudou.
+- **Bússola:** se ele repete a mesma ação ou erra várias vezes seguidas, o DotCrow manda parar, achar a causa e mudar de caminho.
+- **Revisão de rumo** a cada 20 ações e **diário:** quando a conversa fica longa, o miolo vira um resumo e o plano continua junto, então o objetivo nunca se perde. São até 200 ações por tarefa.
+
+### 🌐 DotCrow no Chrome (extensão)
+
+Os corvos usam o **seu** Chrome, com as contas que você já usa: abrem páginas, leem, clicam com o mouse e digitam.
+
+```bash
+dotcrow extensao     # grava a extensão em ~/DotCrow/extensao-chrome e mostra o código
+```
+
+Depois, em `chrome://extensions`: ligue o **Modo do desenvolvedor**, clique em **Carregar sem compactação** e escolha a pasta. Com o painel aberto, clique no ícone do DotCrow no Chrome, cole o código e conecte (o painel também tem a tela **Chrome**).
+
+- O corvo **lê a página com os elementos numerados** (`[3] botão "Entrar"`, `[4] campo email`) e age pelo número: clicar, digitar, escolher em menus, apertar teclas, passar o mouse, rolar e tirar captura. Um **cursor vermelho** mostra onde ele clica.
+- Ele só mexe nas abas do grupo vermelho **DotCrow** (as que ele abre e as que você entregar pelo ícone).
+- A primeira ação de cada tarefa pede a sua confirmação. **Senha e cartão pedem sempre**, até no modo livre. O ícone tem **Pausar**.
+- A extensão só conversa com o painel neste computador, e só com o código de pareamento. O painel recusa conexões de sites.
+
+O navegador próprio do DotCrow (janela separada, sem mexer no seu mouse) usa os mesmos olhos: `ler` numera os elementos e `clicar {n}` acerta o alvo. Com `DOTCROW_SEM_JANELA=1`, ele roda invisível (servidores).
+
 ### 🔌 Conectores
 
 São **257 serviços** com API, em 18 categorias: código (GitHub, GitLab, Jira…), nuvem (Vercel, Cloudflare, Hostinger, DigitalOcean…), projetos (Notion, Trello, Asana, ClickUp, Airtable…), arquivos (Google Drive, Dropbox, OneDrive…), e-mail e agenda (Gmail, Google Agenda, Outlook, Brevo, Mailchimp…), mensagens (Telegram, Discord, Slack, WhatsApp Cloud API, Evolution API, Chatwoot…), redes sociais (X, LinkedIn, Instagram, YouTube, TikTok…), lojas e pagamentos (Shopify, WooCommerce, Nuvemshop, Mercado Livre, Mercado Pago, Stripe, Asaas…), IA e dados, busca, clima, mapas e dados públicos do Brasil (ViaCEP, BrasilAPI, IBGE, Banco Central, Câmara, Senado…).
@@ -344,6 +370,8 @@ dotcrow conectores remover github
 | Provedores reais: Claude, GPT, Gemini, OpenRouter, DeepSeek, Groq, Ollama | ✅ |
 | Troca automática entre LLMs quando um falha | ✅ |
 | Corvos agindo no computador (terminal, arquivos, navegador, mouse, teclado) | ✅ |
+| Tarefas longas: plano vivo, bússola contra andar em círculo, revisão de rumo e diário | ✅ |
+| Extensão DotCrow no Chrome: o corvo usa o seu Chrome pelos elementos numerados (`dotcrow extensao`) | ✅ |
 | Corvos agindo no celular Android: tela, toques, rolagem, digitação, botões, apps, ligações e SMS (`dotcrow celular`) | ✅ |
 | Áudio do dono transcrito virando tarefa (`/audio`, `dotcrow audio`) | ✅ |
 | 257 conectores pela API oficial, com a chave no cofre (`dotcrow conectores`) | ✅ |

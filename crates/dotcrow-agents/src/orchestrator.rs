@@ -15,10 +15,17 @@ use crate::{
     AgentId, Memory, TaskKind,
     hands::{Hands, ToolCall, clip, parse_call},
     profile,
+    rumo::{self, Bussola, Plano},
 };
 
-/// Limite de ações de uma tarefa, para um corvo perdido não rodar para sempre.
-const MAX_ACTIONS: usize = 60;
+/// Limite de ações de uma tarefa, para um corvo perdido não rodar para sempre. É alto de
+/// propósito: tarefas longas (um projeto inteiro) precisam de centenas de passos; quem
+/// segura o corvo no caminho é o rumo (plano vivo, alertas e revisões), não o limite.
+const MAX_ACTIONS: usize = 200;
+/// A cada quantas ações entra uma revisão de rumo.
+const REVISAO_A_CADA: usize = 20;
+/// Limite de mexidas no plano (plano/marcar não gastam ações, mas não podem girar à toa).
+const MAX_MEXIDAS_NO_PLANO: usize = 80;
 /// Quantas vezes o Vigia pode mandar refazer antes de o resultado seguir assim mesmo.
 const MAX_REWORK: usize = 2;
 /// Quanto da saída de cada ação volta para a LLM.
@@ -35,7 +42,19 @@ ciclos: peça UMA ação, receba o resultado, decida a próxima. Responda SEMPRE
 Regras: não invente resultados, confira o que fez (rode, leia o arquivo, teste o código); se algo falhar, tente outro \
 caminho; salve tudo o que produzir na pasta da conversa; não peça ao dono o que você mesmo consegue descobrir. Algumas \
 ações pedem a confirmação do dono: se ele negar, siga sem ela ou explique. Quando terminar, use a ferramenta \
-`concluir` com `texto`: a entrega final para o dono (o que foi feito, onde estão os arquivos e como usar).";
+`concluir` com `texto`: a entrega final para o dono (o que foi feito, onde estão os arquivos e como usar).\n\n\
+TAREFAS LONGAS (mais de 3 passos: um programa, um site, uma pesquisa grande, muitos arquivos): trabalhe como um \
+profissional, não em linha reta.\n\
+- Sua PRIMEIRA ação é `plano {\"itens\": [\"passo curto\", ...]}` (de 3 a 15 passos, na ordem, cada um verificável). \
+Ele vira o seu checklist; o dono acompanha ao vivo.\n\
+- Ao começar um item: `marcar {\"item\": n, \"estado\": \"fazendo\"}`; ao terminar E conferir: `estado: \"feito\"`. \
+Se um item não fizer mais sentido: `estado: \"pulado\"` com `nota` dizendo por quê. plano e marcar não gastam ações.\n\
+- Descobriu algo que muda o caminho? Refaça o plano com `plano` (os itens iguais mantêm a situação).\n\
+- Ciclo de cada item: entender (ler o que existe) → fazer → conferir (rodar, testar, ler de novo) → corrigir. Código \
+só está pronto quando roda; um site, quando abre; um arquivo, quando você leu o resultado.\n\
+- Errou? Leia a mensagem de erro inteira, ache a causa e mude a abordagem; não repita a mesma ação esperando outro \
+resultado.\n\
+- Você só pode concluir com o plano todo feito (ou pulado com motivo) e depois de conferir o que mudou.";
 
 /// Regras que valem para todos os corvos em todas as etapas.
 const COMMON_RULES: &str = "Responda no idioma em que o dono escreveu o pedido. Seja objetivo e use listas curtas. \
@@ -188,6 +207,27 @@ pub enum Event {
         provider: String,
         /// Modelo que respondeu.
         model: String,
+    },
+    /// O plano vivo do corvo mudou (montou, replanejou ou marcou um item).
+    Plano {
+        /// Etapa (a do corvo que executa).
+        step: usize,
+        /// Os itens, na ordem, com a situação de cada um.
+        itens: Vec<rumo::Item>,
+    },
+    /// O DotCrow corrigiu o rumo do corvo (andando em círculo, quis concluir cedo...).
+    Rumo {
+        /// Etapa.
+        step: usize,
+        /// O que aconteceu, em poucas palavras.
+        motivo: String,
+    },
+    /// A conversa do ciclo de ações ficou grande e o miolo virou um diário curto.
+    Compactado {
+        /// Etapa.
+        step: usize,
+        /// Mensagens resumidas.
+        mensagens: usize,
     },
     /// O dono mandou uma mensagem enquanto a tarefa roda (conversa ao vivo).
     OwnerMessage {
@@ -990,6 +1030,9 @@ async fn act(
     let mut final_text = None;
     let mut n = 0;
     let mut plain_replies = 0;
+    let mut plano = Plano::default();
+    let mut bussola = Bussola::default();
+    let mut mexidas = 0;
     while n < MAX_ACTIONS {
         // Conversa ao vivo: recolhe o que o dono mandou e leva em conta na próxima ação.
         if let Some(ib) = inbox {
@@ -1027,14 +1070,46 @@ Se já terminou, use a ferramenta concluir."
             });
             continue;
         };
+        plain_replies = 0;
+
+        // O plano vivo é do próprio ciclo: não passa pelas mãos nem gasta ações.
+        if tool == "plano" || tool == "marcar" {
+            mexidas += 1;
+            let r = if mexidas > MAX_MEXIDAS_NO_PLANO {
+                Err("chega de mexer no plano: siga com as ações e conclua".to_string())
+            } else if tool == "plano" {
+                plano.definir(&args)
+            } else {
+                plano.marcar(&args)
+            };
+            if r.is_ok() {
+                emit(Event::Plano { step, itens: plano.itens().to_vec() });
+            }
+            let (ok, txt) = match r {
+                Ok(t) => (true, t),
+                Err(e) => (false, e),
+            };
+            messages.push(Message {
+                role: Role::User,
+                content: format!("RESULTADO do {tool} ({}):\n{txt}", if ok { "ok" } else { "erro" }),
+            });
+            continue;
+        }
+
         if tool == "concluir" {
+            // Antes de aceitar a entrega: o plano está fechado? o que mudou foi conferido?
+            if let Some(p) = bussola.antes_de_concluir(&plano) {
+                emit(Event::Rumo { step, motivo: p.resumo() });
+                messages.push(Message { role: Role::User, content: p.mensagem() });
+                continue;
+            }
             let text = args.get("texto").and_then(|v| v.as_str()).unwrap_or("").trim().to_string();
             final_text = Some(if text.is_empty() { why } else { text });
             break;
         }
         n += 1;
-        let call = ToolCall { n, tool: tool.clone(), args, why: why.clone() };
-        emit(Event::ActionStarted { n, tool, title: hands.title(&call), why });
+        let call = ToolCall { n, tool: tool.clone(), args: args.clone(), why: why.clone() };
+        emit(Event::ActionStarted { n, tool: tool.clone(), title: hands.title(&call), why });
         let out = hands.run(&call).await;
         emit(Event::ActionFinished { n, ok: out.ok, output: clip(&out.text, MAX_SHOWN) });
         shrink_old_results(&mut messages);
@@ -1046,10 +1121,24 @@ Se já terminou, use a ferramenta concluir."
                 clip(&out.text, MAX_TOOL_TEXT)
             ),
         });
+        if let Some(p) = bussola.registrar(n, &tool, &args, out.ok) {
+            emit(Event::Rumo { step, motivo: p.resumo() });
+            messages.push(Message { role: Role::User, content: p.mensagem() });
+        }
+        if n % REVISAO_A_CADA == 0 && n < MAX_ACTIONS {
+            messages.push(Message { role: Role::User, content: rumo::revisao(n, MAX_ACTIONS, &plano) });
+        }
+        compactar(router, emit, step, &mut messages, &plano).await;
     }
-    let text = final_text.unwrap_or_else(|| {
-        format!("Parei depois de {MAX_ACTIONS} ações sem concluir. Veja as ações acima e peça para continuar.")
+    let mut text = final_text.unwrap_or_else(|| {
+        format!(
+            "Parei depois de {MAX_ACTIONS} ações sem concluir. O que já foi feito está acima e no plano; peça \
+\"continue\" para eu seguir de onde parei."
+        )
     });
+    if !plano.vazio() {
+        text.push_str(&format!("\n\nPlano:\n{}", plano.render()));
+    }
     emit(Event::StageFinished {
         step,
         agent,
@@ -1060,6 +1149,45 @@ Se já terminou, use a ferramenta concluir."
         failovers,
     });
     Ok(format!("{text}\n\n(Foram feitas {n} ações no computador.)"))
+}
+
+/// Quando a conversa do ciclo de ações passa do limite, o miolo vira um diário curto
+/// (escrito por um modelo rápido), com o plano atual junto. Se o resumo falhar, segue
+/// sem compactar: o encolhimento dos resultados antigos continua valendo.
+async fn compactar(
+    router: &Router,
+    emit: &mut (impl FnMut(Event) + Send),
+    step: usize,
+    messages: &mut Vec<Message>,
+    plano: &Plano,
+) {
+    let tamanhos: Vec<(bool, usize)> =
+        messages.iter().map(|m| (m.role == Role::Assistant, m.content.chars().count())).collect();
+    let Some((ini, fim)) = rumo::trecho_para_compactar(&tamanhos) else { return };
+    let miolo = messages[ini..fim]
+        .iter()
+        .map(|m| {
+            format!("[{}]\n{}", if m.role == Role::Assistant { "corvo" } else { "resultado" }, clip(&m.content, 4000))
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    let req = CompletionRequest {
+        messages: vec![
+            Message { role: Role::System, content: format!("{}\n\n{COMMON_RULES}", rumo::PEDIDO_DE_DIARIO) },
+            Message { role: Role::User, content: miolo },
+        ],
+        max_tokens: 2500,
+        tier: Tier::Fast,
+    };
+    let Ok(r) = complete(router, &req).await else { return };
+    let mut diario = format!("# Diário do trabalho até aqui (resumo das ações anteriores)\n{}", r.response.text.trim());
+    if !plano.vazio() {
+        diario.push_str(&format!("\n\n# Plano atual\n{}", plano.render()));
+    }
+    diario.push_str("\n\nContinue a tarefa a partir daqui.");
+    let mensagens = fim - ini;
+    messages.splice(ini..fim, [Message { role: Role::User, content: diario }]);
+    emit(Event::Compactado { step, mensagens });
 }
 
 /// Encolhe os resultados antigos, mantendo os 4 mais recentes inteiros.
@@ -1483,6 +1611,74 @@ mod tests {
         // O resultado da ação volta para o corvo antes da próxima decisão.
         assert!(reqs[3].messages.last().unwrap().content.starts_with("RESULTADO da ação 1 (ok)"));
         assert_eq!(p.calls(), 6);
+    }
+
+    fn entrada_com_maos<'a>(hands: &'a FakeHands) -> TaskInput<'a> {
+        TaskInput {
+            request: "crie um programa",
+            kind: Some(TaskKind::Operate),
+            hands: Some(hands),
+            history: None,
+            memory: None,
+            inbox: None,
+            oraculo: Oraculo::Desligado,
+        }
+    }
+
+    #[tokio::test]
+    async fn plano_vivo_segura_o_concluir_ate_fechar_os_itens() {
+        let p = MockProvider::scripted(
+            "anthropic",
+            &[
+                "plano",
+                "VEREDITO: aprovado",
+                "{\"ferramenta\": \"plano\", \"args\": {\"itens\": [\"criar\", \"testar\"]}}",
+                "{\"ferramenta\": \"terminal\", \"args\": {\"comando\": \"touch a\"}}",
+                "{\"ferramenta\": \"concluir\", \"args\": {\"texto\": \"cedo demais\"}}",
+                "{\"ferramenta\": \"marcar\", \"args\": {\"item\": 1, \"estado\": \"feito\"}}",
+                "{\"ferramenta\": \"marcar\", \"args\": {\"item\": 2, \"estado\": \"feito\"}}",
+                "{\"ferramenta\": \"concluir\", \"args\": {\"texto\": \"Pronto\"}}",
+                "CONFERÊNCIA: ok",
+                "Resumo",
+            ],
+        );
+        let hands = FakeHands(Default::default());
+        let mut events = Vec::new();
+        let out = run(&router(p.clone()), entrada_com_maos(&hands), |e| events.push(e)).await.unwrap();
+        // plano e marcar não são ações no computador: só o terminal rodou.
+        assert_eq!(*hands.0.lock().unwrap(), vec!["touch a".to_string()]);
+        assert_eq!(events.iter().filter(|e| matches!(e, Event::ActionStarted { .. })).count(), 1);
+        assert_eq!(events.iter().filter(|e| matches!(e, Event::Plano { .. })).count(), 3);
+        assert!(events.iter().any(|e| matches!(e, Event::Rumo { motivo, .. } if motivo.contains("itens abertos"))));
+        assert!(out.result.starts_with("Pronto"), "{}", out.result);
+        assert!(out.result.contains("✓ 1. criar") && out.result.contains("✓ 2. testar"));
+        // O corvo recebeu o motivo da recusa antes de marcar os itens.
+        let reqs = p.requests();
+        assert!(reqs[5].messages.last().unwrap().content.contains("Ainda não dá para concluir"));
+    }
+
+    #[tokio::test]
+    async fn bussola_avisa_quando_o_corvo_anda_em_circulo() {
+        let mesma = "{\"ferramenta\": \"terminal\", \"args\": {\"comando\": \"make\"}}";
+        let p = MockProvider::scripted(
+            "anthropic",
+            &[
+                "plano",
+                "VEREDITO: aprovado",
+                mesma,
+                mesma,
+                mesma,
+                "{\"ferramenta\": \"concluir\", \"args\": {\"texto\": \"feito\"}}",
+                "CONFERÊNCIA: ok",
+                "Resumo",
+            ],
+        );
+        let hands = FakeHands(Default::default());
+        let mut events = Vec::new();
+        run(&router(p.clone()), entrada_com_maos(&hands), |e| events.push(e)).await.unwrap();
+        assert!(events.iter().any(|e| matches!(e, Event::Rumo { motivo, .. } if motivo.contains("círculo"))));
+        let reqs = p.requests();
+        assert!(reqs[5].messages.last().unwrap().content.starts_with("⚠ ALERTA DE RUMO"));
     }
 
     struct FakeInbox(std::sync::Mutex<Vec<String>>);

@@ -151,6 +151,8 @@ struct AppState {
     remoto: Option<(String, String)>,
     /// Avisado pelo botão "Fechar painel", para quem abriu pelo ícone e não tem terminal.
     shutdown: tokio::sync::Notify,
+    /// A ponte com a extensão "DotCrow no Chrome".
+    ponte: Arc<crate::ponte_chrome::Ponte>,
 }
 
 type Shared = Arc<AppState>;
@@ -358,6 +360,10 @@ fn app(state: Shared) -> axum::Router {
             "/manifest.webmanifest",
             get(|| async { ([(header::CONTENT_TYPE, "application/manifest+json")], MANIFEST) }),
         )
+        .route("/extensao", get(extensao_ws))
+        .route("/api/extensao", get(extensao_estado))
+        .route("/api/extensao/instalar", post(extensao_instalar))
+        .route("/api/extensao/codigo", post(extensao_codigo))
         .route("/api/estado", get(get_state))
         .route("/api/chaves", post(add_key))
         .route("/api/chaves/{id}", delete(delete_key))
@@ -406,6 +412,39 @@ fn state_view(st: &AppState) -> StateView {
         warnings: st.store.warnings(),
         lan: st.lan,
     }
+}
+
+/// A extensão "DotCrow no Chrome" se conecta aqui (WebSocket). Só aceita extensões do
+/// Chrome (nunca um site) e só segue com o código de pareamento certo (ver ponte_chrome).
+async fn extensao_ws(
+    State(st): State<Shared>,
+    headers: axum::http::HeaderMap,
+    ws: axum::extract::ws::WebSocketUpgrade,
+) -> Response {
+    let origem = headers.get(header::ORIGIN).and_then(|o| o.to_str().ok()).unwrap_or("");
+    if !origem.is_empty() && !origem.starts_with("chrome-extension://") {
+        return ApiError(StatusCode::FORBIDDEN, "só a extensão do DotCrow fala com esta porta".into()).into_response();
+    }
+    let ponte = st.ponte.clone();
+    ws.max_message_size(16 * 1024 * 1024).on_upgrade(move |socket| async move { ponte.atender(socket).await })
+}
+
+async fn extensao_estado(State(st): State<Shared>) -> Json<serde_json::Value> {
+    let mut v = st.ponte.estado();
+    v["pasta"] = serde_json::json!(crate::ponte_chrome::pasta_padrao().display().to_string());
+    v["instalada"] = serde_json::json!(crate::ponte_chrome::pasta_padrao().join("manifest.json").exists());
+    Json(v)
+}
+
+async fn extensao_instalar(State(st): State<Shared>) -> Result<Json<serde_json::Value>, ApiError> {
+    let pasta = crate::ponte_chrome::pasta_padrao();
+    crate::ponte_chrome::instalar(&pasta).map_err(|e| bad(format!("não consegui gravar a extensão: {e}")))?;
+    Ok(extensao_estado(State(st)).await)
+}
+
+async fn extensao_codigo(State(st): State<Shared>) -> Json<serde_json::Value> {
+    st.ponte.trocar_codigo();
+    extensao_estado(State(st)).await
 }
 
 async fn get_state(State(st): State<Shared>) -> Json<StateView> {
@@ -649,7 +688,8 @@ async fn create_task(
     tokio::spawn(async move {
         let aprovador = Arc::new(PainelAprovador { st: st2.clone(), task: id2.clone() });
         let maos = Maos::new(modo, pasta.clone(), st2.store.dir().to_path_buf(), aprovador, liberados)
-            .com_conectores(crate::conectores::Conexoes::do_store(&st2.store));
+            .com_conectores(crate::conectores::Conexoes::do_store(&st2.store))
+            .com_chrome(st2.ponte.clone());
         let memoria = st2.store.master_key().ok().and_then(|k| Memoria::abrir(st2.store.dir(), k).ok());
         let caixa = PainelInbox(inbox);
         let oraculo = st2.store.oraculo();
@@ -1494,6 +1534,7 @@ pub async fn serve(store: Arc<Store>, opts: Options) -> Result<()> {
         None
     };
 
+    let dir_da_ponte = store.dir().to_path_buf();
     let state = Arc::new(AppState {
         store,
         token: token.clone(),
@@ -1506,6 +1547,7 @@ pub async fn serve(store: Arc<Store>, opts: Options) -> Result<()> {
         treino: Mutex::default(),
         remoto: remoto.clone(),
         shutdown: tokio::sync::Notify::new(),
+        ponte: Arc::new(crate::ponte_chrome::Ponte::carregar(&dir_da_ponte)),
     });
 
     let local = format!("http://127.0.0.1:{}/#t={token}", opts.port);
@@ -1606,6 +1648,7 @@ mod tests {
             treino: Mutex::default(),
             remoto: None,
             shutdown: tokio::sync::Notify::new(),
+            ponte: Arc::new(crate::ponte_chrome::Ponte::carregar(&dir)),
         });
         tokio::spawn(async move { axum::serve(listener, app(state)).await });
         (format!("http://127.0.0.1:{port}"), token, dir)

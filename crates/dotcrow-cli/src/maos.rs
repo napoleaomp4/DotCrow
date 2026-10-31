@@ -172,6 +172,10 @@ pub struct Maos {
     saidas: Option<PathBuf>,
     /// As chaves e contas dos conectores (X, GitHub, Google Drive...).
     conexoes: Option<Arc<crate::conectores::Conexoes>>,
+    /// A ponte com a extensão "DotCrow no Chrome" (só quando a tarefa vem do painel).
+    chrome: Option<Arc<crate::ponte_chrome::Ponte>>,
+    /// O dono já liberou o Chrome dele nesta tarefa.
+    chrome_liberado: std::sync::atomic::AtomicBool,
 }
 
 impl Maos {
@@ -209,10 +213,18 @@ impl Maos {
             pode_perguntar: false,
             saidas: None,
             conexoes: None,
+            chrome: None,
+            chrome_liberado: std::sync::atomic::AtomicBool::new(false),
         }
     }
 
     /// Liga os conectores (serviços com API, chaves no cofre).
+    /// Liga a ferramenta `chrome`: os corvos usam o Chrome do dono pela extensão.
+    pub fn com_chrome(mut self, ponte: Arc<crate::ponte_chrome::Ponte>) -> Self {
+        self.chrome = Some(ponte);
+        self
+    }
+
     pub fn com_conectores(mut self, cx: crate::conectores::Conexoes) -> Self {
         self.conexoes = Some(Arc::new(cx));
         self
@@ -765,9 +777,12 @@ Troque para o modo Computador ou instale.",
                 }
                 nav.ir(url).await.map(|_| format!("Abri {url}."))
             }
-            "ler" | "texto" => nav.texto().await.map(|t| clip(&t, MAX_OUT)),
+            "ler" | "olhar" | "ver" => nav.ler_numerado().await.map(|t| clip(&t, MAX_OUT)),
+            "texto" => nav.texto().await.map(|t| clip(&t, MAX_OUT)),
             "clicar" => {
-                if let Some(sel) = call.text("seletor") {
+                if let Some(n) = call.number("n").or_else(|| call.number("elemento")) {
+                    nav.clicar_n(n).await
+                } else if let Some(sel) = call.text("seletor") {
                     nav.clicar_seletor(sel).await.map(|_| format!("Cliquei em {sel}."))
                 } else if let (Some(x), Some(y)) = (call.number("x"), call.number("y")) {
                     nav.clicar(x as f64, y as f64).await.map(|_| format!("Cliquei em {x},{y}."))
@@ -777,7 +792,56 @@ Troque para o modo Computador ou instale.",
             }
             "digitar" => {
                 let Some(texto) = call.text("texto") else { return ToolOutput::err("faltou args.texto") };
+                if let Some(n) = call.number("n").or_else(|| call.number("elemento")) {
+                    let limpar = call.args.get("limpar").and_then(|v| v.as_bool()).unwrap_or(true);
+                    match nav.focar(n, limpar).await {
+                        Ok(info) if info["sensivel"].as_bool() == Some(true) => {
+                            let titulo = format!(
+                                "navegador: digitar num campo sensível ({})",
+                                info["rotulo"].as_str().unwrap_or("")
+                            );
+                            if !self.autorizar(call, &titulo, Categoria::Segredos, true).await {
+                                return ToolOutput::err("o dono não autorizou digitar nesse campo (senha ou cartão)");
+                            }
+                        }
+                        Ok(_) => {}
+                        Err(e) => return ToolOutput::err(e),
+                    }
+                }
                 nav.digitar(texto).await.map(|_| format!("Digitei \"{}\".", clip(texto, 120)))
+            }
+            "tecla" | "apertar" => {
+                let Some(t) = call.text("tecla") else {
+                    return ToolOutput::err("faltou args.tecla (ex.: Enter, Tab, Escape)");
+                };
+                nav.tecla(t).await.map(|_| format!("Apertei {t}."))
+            }
+            "escolher" | "selecionar" => {
+                let (Some(n), Some(op)) = (call.number("n"), call.text("opcao")) else {
+                    return ToolOutput::err("escolher precisa de n (o menu) e opcao (o texto da opção)");
+                };
+                nav.escolher(n, op).await
+            }
+            "passar_mouse" | "passar" | "hover" => {
+                if let Some(n) = call.number("n") {
+                    match nav.alvo(n).await {
+                        Ok(a) => {
+                            let (x, y) = (a["x"].as_f64().unwrap_or(0.0), a["y"].as_f64().unwrap_or(0.0));
+                            nav.passar(x, y).await.map(|_| format!("Passei o mouse por [{n}]."))
+                        }
+                        Err(e) => Err(e),
+                    }
+                } else if let (Some(x), Some(y)) = (call.number("x"), call.number("y")) {
+                    nav.passar(x as f64, y as f64).await.map(|_| format!("Passei o mouse por {x},{y}."))
+                } else {
+                    return ToolOutput::err("passar_mouse precisa de n ou de x e y");
+                }
+            }
+            "voltar" => nav.evaluar("history.back()").await.map(|_| "Voltei uma página.".to_string()),
+            "esperar" => {
+                let s = call.number("segundos").unwrap_or(2).clamp(1, 30) as u64;
+                tokio::time::sleep(std::time::Duration::from_secs(s)).await;
+                Ok(format!("Esperei {s} s."))
             }
             "rolar" => {
                 let dy = call.number("quantidade").unwrap_or(600) as f64;
@@ -787,12 +851,68 @@ Troque para o modo Computador ou instale.",
                 let arq = self.pasta.join(format!("navegador-{}.png", call.n));
                 nav.captura(&arq).await.map(|_| format!("Captura salva em {}", arq.display()))
             }
-            outra => {
-                Err(format!("ação de navegador \"{outra}\" não existe. Use: ir, ler, clicar, digitar, rolar, captura."))
-            }
+            outra => Err(format!(
+                "ação de navegador \"{outra}\" não existe. Use: ir, ler, clicar, digitar, tecla, escolher, \
+passar_mouse, rolar, voltar, esperar, captura."
+            )),
         };
         match r {
             Ok(txt) => ToolOutput::ok(txt),
+            Err(e) => ToolOutput::err(e),
+        }
+    }
+
+    /// O Chrome do dono, pela extensão: as mesmas ações do navegador, nas abas do grupo
+    /// DotCrow. A primeira ação da tarefa pede a confirmação do dono (o Chrome dele tem as
+    /// contas logadas); senha e cartão pedem sempre.
+    async fn chrome(&self, call: &ToolCall) -> ToolOutput {
+        use std::sync::atomic::Ordering;
+        if self.modo == Modo::Sandbox {
+            return ToolOutput::err("no modo Sandbox os corvos não usam o Chrome do dono; use web ou navegador");
+        }
+        let Some(ponte) = &self.chrome else {
+            return ToolOutput::err(
+                "a extensão do Chrome só funciona com o painel (dotcrow painel); aqui, use a ferramenta navegador",
+            );
+        };
+        let acao = call.text("acao").unwrap_or("").trim().to_lowercase();
+        if acao.is_empty() {
+            return ToolOutput::err("faltou args.acao (ir, ler, clicar, digitar, tecla, abas, nova_aba...)");
+        }
+        if !self.chrome_liberado.load(Ordering::Relaxed) {
+            let titulo = format!("usar o seu Chrome (com as suas contas): {}", self.title(call));
+            if !self.autorizar(call, &titulo, Categoria::Controle, false).await {
+                return ToolOutput::err("o dono não liberou o Chrome dele nesta tarefa; use a ferramenta navegador");
+            }
+            self.chrome_liberado.store(true, Ordering::Relaxed);
+        }
+        let mut args = call.args.clone();
+        let prazo = if acao == "esperar" { 40 } else { 60 };
+        let mut r = ponte.pedir(&acao, args.clone(), prazo).await;
+        // Campo de senha ou cartão: a extensão para e o dono decide.
+        if let Ok(v) = &r
+            && v.get("precisa_confirmar").and_then(|b| b.as_bool()) == Some(true)
+        {
+            let motivo = v.get("motivo").and_then(|m| m.as_str()).unwrap_or("campo sensível").to_string();
+            if !self.autorizar(call, &format!("Chrome: {motivo}"), Categoria::Segredos, true).await {
+                return ToolOutput::err("o dono não autorizou digitar nesse campo (senha ou cartão)");
+            }
+            args["confirmado"] = serde_json::json!(true);
+            r = ponte.pedir(&acao, args, prazo).await;
+        }
+        match r {
+            Ok(v) => {
+                if let Some(b64) = v.get("png_base64").and_then(|b| b.as_str()) {
+                    let arq = self.pasta.join(format!("chrome-{}.png", call.n));
+                    return match crate::cdp::base64_decode(b64).map(|bytes| std::fs::write(&arq, bytes)) {
+                        Some(Ok(())) => ToolOutput::ok(format!("Captura do Chrome salva em {}", arq.display())),
+                        _ => ToolOutput::err("não consegui salvar a captura do Chrome"),
+                    };
+                }
+                let texto =
+                    v.get("texto").and_then(|t| t.as_str()).map(str::to_string).unwrap_or_else(|| v.to_string());
+                ToolOutput::ok(clip(&texto, MAX_OUT))
+            }
             Err(e) => ToolOutput::err(e),
         }
     }
@@ -1062,11 +1182,15 @@ OpenStreetMap/Nominatim) ou abra a página com o `navegador`.\n\
 - navegador {{url, captura?}}: lê uma página de uma vez, num navegador invisível que roda JavaScript (sites que a \
 ferramenta web não mostra direito, como o Google Maps). Use-o quando a ferramenta web vier vazia ou com CAPTCHA; \
 captura=true salva uma imagem da página na pasta.\n\
-- navegador {{acao, ...}}: navega numa janela própria com um **cursor próprio** — os cliques e as teclas vão para a \
-página sem mexer no mouse do dono, então ele pode usar o computador ao mesmo tempo. Ações: `ir {{url}}` abre a página; \
-`ler` devolve o texto visível; `clicar {{seletor}}` ou `clicar {{x, y}}` clica; `digitar {{texto}}` digita no campo em \
-foco; `rolar {{quantidade}}` rola (positivo desce); `captura` salva uma imagem na pasta. A janela fica aberta entre as \
-ações da tarefa.\n\
+- navegador {{acao, ...}}: navega numa janela própria com um **cursor próprio** (vermelho) — os cliques e as teclas vão \
+para a página sem mexer no mouse do dono, então ele pode usar o computador ao mesmo tempo. Ações: `ir {{url}}` abre a \
+página; `ler` descreve a página e NUMERA os elementos usáveis ([1] botão \"Entrar\", [2] campo email...); \
+`clicar {{n}}` clica no elemento n (prefira o número; `seletor` ou `x, y` só se faltar); `digitar {{n, texto}}` clica \
+no campo n, limpa e digita; `tecla {{tecla}}` aperta Enter, Tab, Escape, setas...; `escolher {{n, opcao}}` escolhe \
+num menu; `passar_mouse {{n}}` abre menus de passar o mouse; `rolar {{quantidade}}` (positivo desce); `voltar`; \
+`esperar {{segundos}}`; `captura` salva uma imagem na pasta. Ciclo: ler → agir pelo número → ler de novo para ver \
+o que mudou (os números mudam quando a página muda). A janela fica aberta entre as ações da tarefa.\n\
+{chrome}\
 - baixar {{url, caminho}}: baixa um arquivo.\n\
 - abrir {{alvo}}: abre um arquivo, pasta ou site nos programas do dono, na tela dele.\n\
 - janelas {{}}: lista as janelas abertas e o tamanho da tela.\n\
@@ -1083,6 +1207,22 @@ programas que só funcionam pela tela.",
             celular =
                 if crate::celular::disponivel() || cfg!(target_os = "android") { crate::celular::manual() } else { "" },
             conectores = self.conexoes.as_deref().map(crate::conectores::manual).unwrap_or_default(),
+            chrome = match &self.chrome {
+                Some(p) if self.modo != Modo::Sandbox => format!(
+                    "- chrome {{{{acao, ...}}}}: usa o CHROME DO DONO pela extensão DotCrow no Chrome ({}), com as contas \
+que ele já tem logadas — use quando a tarefa precisa dessas contas (e-mail, redes, sistemas da empresa) ou quando o dono \
+pedir o Chrome dele. Mesmas ações do navegador (ir, ler, clicar {{{{n}}}}, digitar {{{{n, texto}}}}, tecla, escolher, \
+passar_mouse, rolar, voltar, esperar, captura) e mais: `abas` lista as abas do DotCrow, `nova_aba {{{{url}}}}`, \
+`fechar_aba`; aba? escolhe a aba pelo número. O corvo só mexe nas abas do grupo DotCrow. Na primeira ação da tarefa \
+o dono confirma; senha e cartão sempre pedem confirmação.\n",
+                    if p.conectada() {
+                        "conectada agora"
+                    } else {
+                        "ainda desconectada: se usar, o erro explica como conectar"
+                    }
+                ),
+                _ => String::new(),
+            },
         )
     }
 
@@ -1102,7 +1242,15 @@ programas que só funcionam pela tela.",
                 .join(" e "),
             "perguntar" => t("pergunta"),
             "web" => format!("{} {}", call.text("metodo").unwrap_or("GET").to_uppercase(), t("url")),
-            "navegador" | "baixar" => t("url"),
+            "baixar" => t("url"),
+            "navegador" | "chrome" => {
+                let acao = t("acao");
+                let alvo = [t("url"), call.number("n").map(|n| format!("[{n}]")).unwrap_or_default(), t("tecla")]
+                    .into_iter()
+                    .find(|v| !v.is_empty())
+                    .unwrap_or_default();
+                format!("{acao} {alvo}").trim().to_string()
+            }
             "abrir" => t("alvo"),
             "focar" => t("janela"),
             "mouse" => {
@@ -1149,6 +1297,7 @@ programas que só funcionam pela tela.",
             "listar" => self.listar(call).await,
             "web" | "curl" => self.web(call, &titulo).await,
             "navegador" => self.navegador(call).await,
+            "chrome" => self.chrome(call).await,
             "baixar" => self.baixar(call, &titulo).await,
             "abrir" => self.abrir(call).await,
             "mouse" | "teclado" | "janelas" | "focar" | "tela" => self.controle(call, &titulo).await,
@@ -1160,7 +1309,7 @@ programas que só funcionam pela tela.",
             },
             other => ToolOutput::err(format!(
                 "ferramenta \"{other}\" não existe. Use: terminal, ler_arquivo, editar_arquivo, escrever_arquivo, \
-listar, buscar, perguntar, web, navegador, baixar, abrir, janelas, focar, mouse, teclado, tela, celular, ligar, sms, \
+listar, buscar, perguntar, web, navegador, chrome, baixar, abrir, janelas, focar, mouse, teclado, tela, celular, ligar, sms, \
 falar, ouvir, notificar, conectores, conector ou concluir."
             )),
         }

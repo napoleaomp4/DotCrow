@@ -309,6 +309,25 @@ input:focus, select:focus, textarea:focus { border-color: var(--sheen); outline:
 pre.cmd { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-s); padding: 10px 12px; overflow-x: auto; margin: 8px 0; }
 @media (max-width: 640px) { .phone { grid-template-columns: 1fr; } }
 
+/* ---------- Chrome (extensão) ---------- */
+.chrome-box { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 24px; align-items: start; margin-top: 16px; }
+.chrome-code { font: 700 30px/1 var(--mono, ui-monospace, monospace); letter-spacing: .14em; padding: 14px 18px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface); display: inline-block; }
+.chrome-state { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; }
+.chrome-state i { width: 10px; height: 10px; border-radius: 50%; background: var(--muted, #8b949e); display: inline-block; }
+.chrome-state[data-on="1"] i { background: #22c55e; box-shadow: 0 0 0 4px rgba(34,197,94,.18); }
+.chrome-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+@media (max-width: 640px) { .chrome-box { grid-template-columns: 1fr; } }
+
+/* ---------- Plano vivo do corvo ---------- */
+.plano-vivo { list-style: none; margin: 6px 0 4px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-s); background: var(--surface); }
+.plano-vivo .titulo { font-weight: 700; margin-bottom: 6px; display: block; }
+.plano-vivo ol { margin: 0; padding-left: 0; list-style: none; display: flex; flex-direction: column; gap: 3px; }
+.plano-vivo li { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 6px; }
+.plano-vivo li[data-e="feito"] span:last-child { color: var(--muted, #8b949e); text-decoration: line-through; }
+.plano-vivo li[data-e="fazendo"] { font-weight: 600; }
+.plano-vivo li[data-e="pulado"] { opacity: .6; }
+.rumo-aviso { color: #f59e0b; }
+
 /* ---------- Portão (código de acesso) ---------- */
 .gate { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
 .gate form { width: min(420px, 100%); display: flex; flex-direction: column; gap: 16px; }
@@ -360,6 +379,10 @@ pre.cmd { background: var(--surface); border: 1px solid var(--line); border-radi
       <button data-view="celular">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2.5" width="10" height="19" rx="2.5"/><circle cx="12" cy="18" r="1" fill="currentColor"/></svg>
         Celular
+      </button>
+      <button data-view="chrome">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5"/><path d="M12 8.5h8.2M9 13.8 4.9 6.7M15 13.8l-4.1 7.1"/></svg>
+        Chrome
       </button>
       <a class="nav-link" href="/civ#terrenos" target="_blank" rel="noopener">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="8" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/><circle cx="17" cy="17" r="4"/></svg>
@@ -504,6 +527,13 @@ pre.cmd { background: var(--surface); border: 1px solid var(--line); border-radi
       <div class="rows" id="treino-rows"></div>
     </section>
 
+    <!-- Chrome (extensão) -->
+    <section id="view-chrome" hidden>
+      <h1>Extensão do Chrome</h1>
+      <p class="lede">Com a extensão <b>DotCrow no Chrome</b>, os corvos usam o seu Chrome — com as contas que você já usa — para abrir páginas, ler, clicar com o mouse e digitar. Eles só mexem nas abas do grupo vermelho <b>DotCrow</b>.</p>
+      <div id="chrome"></div>
+    </section>
+
     <!-- Celular -->
     <section id="view-celular" hidden>
       <h1>Usar no celular</h1>
@@ -585,13 +615,14 @@ pre.cmd { background: var(--surface); border: 1px solid var(--line); border-radi
   });
 
   // ---------- Navegação ----------
-  const views = ["tarefas", "chaves", "provedores", "memoria", "treino", "celular"];
+  const views = ["tarefas", "chaves", "provedores", "memoria", "treino", "celular", "chrome"];
   function go(view) {
     for (const v of views) $("#view-" + v).hidden = v !== view;
     for (const b of document.querySelectorAll(".nav button")) {
       if (b.dataset.view === view) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
     }
     if (view === "celular") renderPhone();
+    if (view === "chrome") renderChrome();
     if (view === "memoria") renderMemoria();
     if (view === "treino") renderTreino();
     window.scrollTo(0, 0);
@@ -867,6 +898,17 @@ pre.cmd { background: var(--surface); border: 1px solid var(--line); border-radi
         body.append(el("div", { class: "lane-think", text: `↩ Ajuste ${ev.round}: ${ev.reason}` }));
         body.scrollTop = body.scrollHeight;
         break;
+      case "plano": {
+        let box = body.querySelector(".lane-plano");
+        if (!box) { box = el("div", { class: "lane-think lane-plano" }); body.append(box); }
+        box.textContent = ev.itens.map((i, k) => `${MARCA_PLANO[i.estado] || "☐"} ${k + 1}. ${i.texto}`).join("\n");
+        box.style.whiteSpace = "pre-wrap";
+        break;
+      }
+      case "rumo":
+        body.append(el("div", { class: "lane-think rumo-aviso", text: "🧭 " + ev.motivo }));
+        body.scrollTop = body.scrollHeight;
+        break;
       case "action_started": {
         const row = el("div", { class: "lane-act", "data-n": String(ev.n) },
           el("span", { class: "m", text: "▸" }), el("span", { class: "t", text: ev.title }));
@@ -940,6 +982,20 @@ pre.cmd { background: var(--surface); border: 1px solid var(--line); border-radi
         if (fl) fl.append(el("li", { class: "owner-msg" },
           el("span", { class: "owner-tag", text: "💬 Você" }),
           el("span", { text: ev.text })));
+        break;
+      }
+      case "plano": planoVivo(node || $("#flight"), ev.itens); break;
+      case "rumo": {
+        const aviso = el("div", { class: "owner-msg rumo-aviso" },
+          el("span", { class: "owner-tag", text: "🧭 Rumo" }), el("span", { text: ev.motivo }));
+        if (node) node.append(aviso); else { const fl = $("#flight"); if (fl) fl.append(el("li", {}, aviso)); }
+        break;
+      }
+      case "compactado": {
+        const fl = $("#flight");
+        if (fl) fl.append(el("li", { class: "owner-msg" },
+          el("span", { class: "owner-tag", text: "🗒 Diário" }),
+          el("span", { text: `resumi ${ev.mensagens} mensagens antigas para o corvo não perder o fio` })));
         break;
       }
       case "kind_chosen": {
@@ -1484,6 +1540,60 @@ pre.cmd { background: var(--surface); border: 1px solid var(--line); border-radi
             el("li", {}, "Deixe o DotCrow aberto no computador enquanto usar."),
             el("li", {}, "No navegador do celular, use \"Adicionar à tela de início\" para abrir como um app.")),
           el("p", { class: "notice", style: "margin-top:20px", text: "Na rede local o tráfego ainda não é cifrado. Use em Wi-Fi de confiança, como o de casa ou do escritório." }))));
+  }
+
+  // ---------- Chrome (extensão) ----------
+  let chromeTimer = null;
+  async function renderChrome() {
+    const box = $("#chrome");
+    let info;
+    try { info = await api("/api/extensao"); } catch { return; }
+    const estado = el("span", { class: "chrome-state", "data-on": info.conectada ? "1" : "" }, el("i", {}),
+      el("span", { text: info.conectada ? `Conectada · ${info.navegador || "Chrome"} · extensão ${info.versao || ""}` : "Desconectada" }));
+    const copiar = el("button", { class: "btn", type: "button", text: "Copiar código" });
+    copiar.addEventListener("click", async () => { try { await navigator.clipboard.writeText(info.codigo); toast("Código copiado"); } catch { toast(info.codigo); } });
+    const instalar = el("button", { class: "btn", type: "button", text: info.instalada ? "Atualizar os arquivos da extensão" : "Instalar a extensão" });
+    instalar.addEventListener("click", async () => {
+      try { const r = await api("/api/extensao/instalar", { method: "POST" }); toast("Extensão gravada em " + r.pasta); renderChrome(); }
+      catch (e) { toast(e.message); }
+    });
+    const trocar = el("button", { class: "btn", type: "button", text: "Trocar código" });
+    trocar.addEventListener("click", async () => {
+      if (!confirm("Trocar o código? A extensão conectada cai e vai precisar do código novo.")) return;
+      await api("/api/extensao/codigo", { method: "POST" }); renderChrome();
+    });
+    box.replaceChildren(
+      el("div", { class: "chrome-box" },
+        el("div", {},
+          estado,
+          el("ol", { class: "steps", style: "margin-top:18px" },
+            el("li", {}, info.instalada ? "Arquivos da extensão em:" : "Clique em \"Instalar a extensão\" (ou rode dotcrow extensao). Ela vai para:",
+              el("pre", { class: "cmd mono", text: info.pasta })),
+            el("li", {}, "No Chrome, abra ", el("span", { class: "mono", text: "chrome://extensions" }), ", ligue o Modo do desenvolvedor e clique em Carregar sem compactação, escolhendo a pasta acima."),
+            el("li", {}, "Clique no ícone do DotCrow no Chrome, cole o código ao lado e toque em Conectar."),
+            el("li", {}, "Pronto: peça uma tarefa dizendo \"use o meu Chrome\". Na primeira ação de cada tarefa você confirma; senha e cartão sempre pedem confirmação.")),
+          el("p", { class: "notice", style: "margin-top:16px", text: "Um cursor vermelho mostra onde o corvo clica. O Chrome avisa no topo enquanto ele usa a aba. No ícone da extensão dá para pausar a qualquer momento." })),
+        el("div", {},
+          el("div", { class: "muted", style: "margin-bottom:6px", text: "Código de pareamento" }),
+          el("div", { class: "chrome-code", text: info.codigo }),
+          el("div", { class: "chrome-actions" }, copiar, trocar),
+          el("div", { class: "chrome-actions" }, instalar))));
+    clearTimeout(chromeTimer);
+    if (!$("#view-chrome").hidden) chromeTimer = setTimeout(renderChrome, 4000);
+  }
+
+  // Plano vivo do corvo: um quadro só por tarefa, atualizado a cada mudança.
+  const MARCA_PLANO = { pendente: "☐", fazendo: "▶", feito: "✓", pulado: "↷" };
+  function planoVivo(onde, itens) {
+    if (!onde) return;
+    let box = onde.querySelector(".plano-vivo");
+    if (!box) { box = el(onde.tagName === "OL" || onde.tagName === "UL" ? "li" : "div", { class: "plano-vivo" }); onde.append(box); }
+    const feitos = itens.filter((i) => i.estado === "feito").length;
+    box.replaceChildren(
+      el("span", { class: "titulo", text: `🗺 Plano do corvo · ${feitos} de ${itens.length} feito(s)` }),
+      el("ol", {}, ...itens.map((i, k) => el("li", { "data-e": i.estado },
+        el("span", { text: MARCA_PLANO[i.estado] || "☐" }),
+        el("span", { text: `${k + 1}. ${i.texto}${i.nota ? " — " + i.nota : ""}` })))));
   }
 
   // ---------- Início ----------

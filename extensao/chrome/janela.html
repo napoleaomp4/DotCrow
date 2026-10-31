@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>DotCrow no Chrome</title>
+<style>
+  :root { --fundo: #0e0f12; --cartao: #17191e; --linha: #2a2d35; --texto: #eef0f4; --suave: #9aa1ad; --vermelho: #e11d2f; --verde: #22c55e; }
+  * { box-sizing: border-box; }
+  body { margin: 0; width: 320px; background: var(--fundo); color: var(--texto); font: 13px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--linha); }
+  header img { width: 26px; height: 26px; }
+  header b { font-size: 14px; letter-spacing: .02em; }
+  header small { display: block; color: var(--suave); font-size: 11px; }
+  main { padding: 12px 14px 14px; }
+  .estado { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px; background: var(--cartao); border: 1px solid var(--linha); margin-bottom: 12px; }
+  .ponto { width: 9px; height: 9px; border-radius: 50%; background: var(--suave); flex: 0 0 9px; }
+  .ponto[data-e="conectada"] { background: var(--verde); box-shadow: 0 0 0 3px rgba(34, 197, 94, .2); }
+  .ponto[data-e="conectando"] { background: #f59e0b; }
+  .ponto[data-e="recusada"] { background: var(--vermelho); }
+  .estado small { display: block; color: var(--suave); font-size: 11px; }
+  label { display: block; font-size: 11px; color: var(--suave); margin: 8px 0 3px; font-weight: 600; letter-spacing: .02em; }
+  input { width: 100%; padding: 8px 10px; border-radius: 9px; border: 1px solid var(--linha); background: #0b0c0f; color: var(--texto); font: inherit; }
+  input#codigo { font-family: ui-monospace, monospace; letter-spacing: .12em; text-transform: uppercase; font-size: 15px; }
+  input:focus { outline: none; border-color: var(--vermelho); }
+  button { width: 100%; margin-top: 10px; padding: 9px 10px; border-radius: 10px; border: 1px solid var(--linha); background: var(--cartao); color: var(--texto); font: 600 13px system-ui, sans-serif; cursor: pointer; }
+  button.pri { background: var(--vermelho); border-color: var(--vermelho); color: #fff; }
+  button:hover { filter: brightness(1.1); }
+  .dica { color: var(--suave); font-size: 11.5px; margin: 10px 0 0; }
+  .aba { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--linha); }
+  .aba .t { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--suave); }
+  .linha { display: flex; gap: 8px; } .linha button { margin-top: 8px; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<header><img src="icones/48.png" alt=""><div><b>DotCrow no Chrome</b><small>os corvos usam este navegador</small></div></header>
+<main>
+  <div class="estado"><span class="ponto" id="ponto"></span><div><b id="estado">…</b><small id="motivo"></small></div></div>
+
+  <form id="form">
+    <label for="codigo">Código do painel</label>
+    <input id="codigo" placeholder="XXXX-XXXX" maxlength="9" autocomplete="off" spellcheck="false">
+    <label for="endereco">Endereço do painel</label>
+    <input id="endereco" placeholder="http://127.0.0.1:7777" spellcheck="false">
+    <button class="pri" type="submit" id="conectar">Conectar</button>
+  </form>
+  <p class="dica" id="ajuda">No painel do DotCrow, abra <b>Extensão do Chrome</b> e copie o código.</p>
+
+  <div class="linha">
+    <button id="pausar" type="button">Pausar</button>
+    <button id="desconectar" type="button">Desconectar</button>
+  </div>
+
+  <div class="aba" id="aba" hidden>
+    <div class="t" id="abaTitulo"></div>
+    <button id="entregar" type="button">Entregar esta aba ao DotCrow</button>
+    <button id="retomar" type="button" hidden>Retomar esta aba (o corvo para de usar)</button>
+  </div>
+  <p class="dica">O corvo só mexe nas abas do grupo vermelho <b>DotCrow</b>. Um cursor vermelho mostra onde ele clica, e o Chrome avisa no topo enquanto ele usa a aba.</p>
+</main>
+<script src="janela.js"></script>
+</body>
+</html>
