@@ -36,7 +36,7 @@ axum = { version = "0.8", default-features = false, features = ["http1", "json",
 qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
 tokio-tungstenite = { version = "0.24", default-features = false, features = ["connect", "rustls-tls-webpki-roots"] }
-rustyline = { version = "16", default-features = false, features = ["with-file-history"] }
+rustyline = { version = "19", default-features = false, features = ["with-file-history"] }
 
 dotcrow-core = { path = "crates/dotcrow-core", version = "0.8.0" }
 dotcrow-relay = { path = "crates/dotcrow-relay", version = "0.8.0" }
