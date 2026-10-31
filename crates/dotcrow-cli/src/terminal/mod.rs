@@ -377,7 +377,7 @@ pastas com /pasta + caminho."
                 p.dim("O painel é o DotCrow no navegador: rode `dotcrow painel` em outra aba do terminal (no Termux, ele abre no navegador do celular).")
             ),
             outro => {
-                let parecido = entrada::COMANDOS.iter().find(|c| c.starts_with(&outro[..outro.len().min(3)]));
+                let parecido = entrada::comando_parecido(outro);
                 match parecido {
                     Some(c) => println!("{}", p.yellow(&format!("Não conheço {outro}. Quis dizer {c}? (/ajuda mostra todos)"))),
                     None => println!("{}", p.yellow(&format!("Não conheço {outro}. /ajuda mostra os comandos."))),

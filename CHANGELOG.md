@@ -72,6 +72,10 @@ O formato segue o [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e 
   beiradas (o centro da tela nem faz parte da janela), então o resto do computador continua
   livre para usar enquanto grava. O selo do canto agora é **clicável**: tocar nele encerra a
   gravação na hora (o botão "Parar" do painel continua valendo).
+- **Texto com acento ou de outro alfabeto não derruba mais o DotCrow.** A ferramenta `web`
+  caía ao decodificar `&amp;`, `&lt;` e afins quando vinha acento ou letra não latina logo
+  depois (como em "Pesquisa &amp; Inovação"), e um comando com barra desconhecido e acentuado,
+  como `/ação`, fechava o modo terminal. Os dois cortavam o texto no meio de uma letra.
 
 ## [0.7.0] - 2026-10-23
 

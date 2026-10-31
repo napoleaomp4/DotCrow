@@ -201,6 +201,13 @@ impl Completer for Ajudante {
     }
 }
 
+/// O comando conhecido mais parecido com `digitado`, pelos três primeiros caracteres.
+/// Conta caracteres, não bytes: o byte 3 de `/ação` cai no meio do `ç`.
+pub fn comando_parecido(digitado: &str) -> Option<&'static str> {
+    let inicio: String = digitado.chars().take(3).collect();
+    COMANDOS.iter().copied().find(|c| c.starts_with(&inicio))
+}
+
 /// Possíveis caminhos para `parcial` (relativo a `base`, ou com `~/` ou `/`).
 /// Devolve (o que mostrar, o texto que entra na linha). Pastas terminam em `/`.
 pub fn completar_caminho(parcial: &str, base: &Path) -> Vec<(String, String)> {
@@ -248,6 +255,13 @@ impl Helper for Ajudante {}
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn comando_parecido_conta_caracteres() {
+        assert_eq!(comando_parecido("/ajda"), Some("/ajuda"));
+        assert_eq!(comando_parecido("/ação"), None);
+        assert_eq!(comando_parecido("/é"), None);
+    }
 
     #[test]
     fn completa_caminhos_e_pastas() {

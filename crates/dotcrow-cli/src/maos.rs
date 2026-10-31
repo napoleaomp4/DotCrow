@@ -1816,7 +1816,7 @@ fn entidades(s: &str) -> String {
     while let Some(p) = rest.find('&') {
         out.push_str(&rest[..p]);
         rest = &rest[p..];
-        let Some(fim) = rest[..rest.len().min(12)].find(';') else {
+        let Some(fim) = rest.bytes().take(12).position(|b| b == b';') else {
             out.push('&');
             rest = &rest[1..];
             continue;
@@ -1962,6 +1962,14 @@ mod tests {
         assert!(t.contains("[aqui](https://exemplo.com/sobre)"));
         assert!(t.contains("name=q"));
         assert!(!t.contains("x()"));
+    }
+
+    #[test]
+    fn entities_next_to_non_ascii_text() {
+        // Trechos em que o byte 12 depois do `&` cai no meio de um caractere. O segundo veio da
+        // página de edição de Common_raven na Wikipedia e derrubava a ferramenta `web`.
+        assert_eq!(entidades("Pesquisa &amp; Inovação"), "Pesquisa & Inovação");
+        assert_eq!(entidades("&lt;ref>(بَعَثَ اللّهُ غُرَابًا"), "<ref>(بَعَثَ اللّهُ غُرَابًا");
     }
 
     #[test]
