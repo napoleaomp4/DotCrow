@@ -48,6 +48,8 @@ impl Navegador {
             .arg("--disable-features=Translate")
             .arg(format!("--window-size={largura},{altura}"))
             .arg("about:blank")
+            // Sem janela na tela (servidores, testes): DOTCROW_SEM_JANELA=1.
+            .args(std::env::var_os("DOTCROW_SEM_JANELA").map(|_| "--headless=new"))
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
@@ -167,6 +169,108 @@ impl Navegador {
     }
 }
 
+/// Os "olhos" do corvo (o mesmo arquivo que a extensão do Chrome usa): numera os
+/// elementos da página e descreve tudo em texto curto.
+pub const OLHOS_JS: &str = include_str!("../../../extensao/chrome/pagina.js");
+
+impl Navegador {
+    /// Garante os olhos na página atual (cada navegação começa sem eles).
+    async fn olhos(&mut self) -> Result<(), String> {
+        self.evaluar(OLHOS_JS).await.map(|_| ())
+    }
+
+    /// A página descrita em texto, com os elementos usáveis numerados.
+    pub async fn ler_numerado(&mut self) -> Result<String, String> {
+        self.olhos().await?;
+        Ok(self.evaluar("window.__dotcrow.ler()").await?.as_str().unwrap_or("").to_string())
+    }
+
+    /// Centro do elemento `n` (rolado para a vista), com o rótulo e se é sensível.
+    pub async fn alvo(&mut self, n: i64) -> Result<Value, String> {
+        self.olhos().await?;
+        let v = self.evaluar(&format!("window.__dotcrow.alvo({n})")).await?;
+        if v.is_null() {
+            return Err(format!("o elemento [{n}] não existe mais: use ler de novo (a página mudou)"));
+        }
+        Ok(v)
+    }
+
+    /// Clica no elemento `n` com o cursor sintético (o vermelho aparece onde o corvo clica).
+    pub async fn clicar_n(&mut self, n: i64) -> Result<String, String> {
+        let a = self.alvo(n).await?;
+        let (x, y) = (a["x"].as_f64().unwrap_or(0.0), a["y"].as_f64().unwrap_or(0.0));
+        let _ = self.evaluar(&format!("window.__dotcrow.cursor({x},{y})")).await;
+        tokio::time::sleep(Duration::from_millis(380)).await;
+        self.clicar(x, y).await?;
+        Ok(format!("Cliquei em [{n}] {} \"{}\".", a["tipo"].as_str().unwrap_or(""), a["rotulo"].as_str().unwrap_or("")))
+    }
+
+    /// Põe o foco no elemento `n` (para digitar); `limpar` seleciona o que já estava escrito.
+    pub async fn focar(&mut self, n: i64, limpar: bool) -> Result<Value, String> {
+        self.olhos().await?;
+        let v = self.evaluar(&format!("window.__dotcrow.focar({n}, {limpar})")).await?;
+        if v.is_null() {
+            return Err(format!("o elemento [{n}] não existe mais: use ler de novo"));
+        }
+        Ok(v)
+    }
+
+    /// Escolhe uma opção de um menu `<select>` pelo texto.
+    pub async fn escolher(&mut self, n: i64, opcao: &str) -> Result<String, String> {
+        self.olhos().await?;
+        let op = serde_json::to_string(opcao).unwrap_or_default();
+        let v = self.evaluar(&format!("window.__dotcrow.escolher({n}, {op})")).await?;
+        if let Some(e) = v.get("erro").and_then(Value::as_str) {
+            return Err(format!("{e}. Opções: {}", v.get("opcoes").map(|o| o.to_string()).unwrap_or_default()));
+        }
+        match v.get("escolhida").and_then(Value::as_str) {
+            Some(t) => Ok(format!("Escolhi \"{t}\" no menu [{n}].")),
+            None => Err(format!("[{n}] não é um menu de opções: clique nele e escolha na lista")),
+        }
+    }
+
+    /// Aperta uma tecla especial (Enter, Tab, Escape, setas, Backspace...).
+    pub async fn tecla(&mut self, tecla: &str) -> Result<(), String> {
+        let (key, code, vk) = tecla_cdp(tecla).ok_or_else(|| format!("não conheço a tecla \"{tecla}\""))?;
+        let texto = if key == "Enter" { "\r" } else { "" };
+        for tipo in ["keyDown", "keyUp"] {
+            let mut p = json!({"type": tipo, "key": key, "code": code, "windowsVirtualKeyCode": vk, "nativeVirtualKeyCode": vk});
+            if tipo == "keyDown" && !texto.is_empty() {
+                p["text"] = json!(texto);
+            }
+            self.comando("Input.dispatchKeyEvent", p).await?;
+        }
+        Ok(())
+    }
+
+    /// Passa o mouse sintético por cima de `(x, y)` (menus que abrem ao passar o mouse).
+    pub async fn passar(&mut self, x: f64, y: f64) -> Result<(), String> {
+        let _ = self.evaluar(&format!("window.__dotcrow && window.__dotcrow.cursor({x},{y})")).await;
+        self.comando("Input.dispatchMouseEvent", json!({"type":"mouseMoved","x":x,"y":y})).await.map(|_| ())
+    }
+}
+
+/// Teclas especiais: (key, code, windowsVirtualKeyCode).
+pub fn tecla_cdp(nome: &str) -> Option<(&'static str, &'static str, i64)> {
+    Some(match nome.trim().to_lowercase().as_str() {
+        "enter" | "return" | "entrar" => ("Enter", "Enter", 13),
+        "tab" => ("Tab", "Tab", 9),
+        "escape" | "esc" => ("Escape", "Escape", 27),
+        "backspace" | "apagar" => ("Backspace", "Backspace", 8),
+        "delete" | "del" => ("Delete", "Delete", 46),
+        "space" | "espaco" | "espaço" => (" ", "Space", 32),
+        "arrowup" | "up" | "cima" | "seta_cima" => ("ArrowUp", "ArrowUp", 38),
+        "arrowdown" | "down" | "baixo" | "seta_baixo" => ("ArrowDown", "ArrowDown", 40),
+        "arrowleft" | "left" | "esquerda" => ("ArrowLeft", "ArrowLeft", 37),
+        "arrowright" | "right" | "direita" => ("ArrowRight", "ArrowRight", 39),
+        "home" | "inicio" | "início" => ("Home", "Home", 36),
+        "end" | "fim" => ("End", "End", 35),
+        "pageup" => ("PageUp", "PageUp", 33),
+        "pagedown" => ("PageDown", "PageDown", 34),
+        _ => return None,
+    })
+}
+
 impl Drop for Navegador {
     fn drop(&mut self) {
         // O Chrome morre junto (kill_on_drop); limpamos o perfil descartável.
@@ -227,7 +331,7 @@ fn ws_url_do_json(corpo: &str) -> Option<String> {
 }
 
 /// Decodifica base64 padrão (o que o CDP usa na captura de tela).
-fn base64_decode(s: &str) -> Option<Vec<u8>> {
+pub fn base64_decode(s: &str) -> Option<Vec<u8>> {
     fn val(c: u8) -> Option<u32> {
         match c {
             b'A'..=b'Z' => Some((c - b'A') as u32),

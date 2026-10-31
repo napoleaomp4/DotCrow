@@ -8,6 +8,22 @@ O formato segue o [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e 
 
 ### Adicionado
 
+- **Tarefas longas, do começo ao fim.** O corvo monta um **plano vivo** (`plano`) e marca cada
+  item (`marcar`: fazendo, feito ou pulado com motivo); o painel e o terminal mostram o checklist ao
+  vivo. Ele não pode concluir com itens abertos nem sem conferir o que mudou (rodar, testar ou ler
+  de novo). A **bússola** percebe quando ele repete a mesma ação ou erra várias vezes seguidas e manda
+  mudar de caminho; a cada 20 ações entra uma **revisão de rumo**; quando a conversa fica longa, o
+  miolo vira um **diário** com o plano junto. O limite subiu de 60 para 200 ações por tarefa.
+- **Extensão DotCrow no Chrome.** `dotcrow extensao` (ou a tela **Chrome** do painel) grava a
+  extensão e mostra o código de pareamento. Com ela, os corvos usam o Chrome do dono, com as contas
+  dele: abrir abas, ler, clicar com o mouse, digitar, escolher em menus, apertar teclas, rolar e
+  tirar captura, só nas abas do grupo **DotCrow** e com um cursor vermelho à vista. A primeira ação
+  de cada tarefa pede confirmação; senha e cartão pedem sempre. A ponte só aceita extensões do Chrome
+  e o código certo.
+- **O navegador enxerga a página.** `navegador {acao: "ler"}` descreve a página e numera os
+  elementos usáveis; `clicar {n}`, `digitar {n, texto}`, `tecla`, `escolher`, `passar_mouse`,
+  `voltar` e `esperar` agem pelo número, com o cursor vermelho mostrando o clique. Digitar em senha
+  ou cartão pede confirmação. `DOTCROW_SEM_JANELA=1` roda esse navegador sem janela.
 - **Modo terminal.** Num terminal, `dotcrow` (ou `dotcrow terminal`) abre o DotCrow dentro da
   pasta atual e os corvos trabalham nos arquivos do projeto. O ícone (o `.exe` e o `.deb`)
   continua abrindo o painel; no Windows, só conta como terminal quando o `dotcrow` foi

@@ -147,6 +147,33 @@ impl Render {
                 }
             }
             // A confirmação aparece pelo próprio aprovador do terminal; a conversa ao vivo é do painel.
+            Event::Plano { itens, .. } => {
+                self.fechar();
+                let feitos = itens.iter().filter(|i| i.estado == dotcrow_agents::rumo::Estado::Feito).count();
+                println!("{}", p.bold(&format!("   🗺 Plano · {feitos} de {} feito(s)", itens.len())));
+                for (n, i) in itens.iter().enumerate() {
+                    let (m, linha) = match i.estado {
+                        dotcrow_agents::rumo::Estado::Feito => ("✓", p.green(&i.texto)),
+                        dotcrow_agents::rumo::Estado::Fazendo => ("▶", p.yellow(&i.texto)),
+                        dotcrow_agents::rumo::Estado::Pulado => ("↷", p.dim(&i.texto)),
+                        dotcrow_agents::rumo::Estado::Pendente => ("☐", i.texto.clone()),
+                    };
+                    let nota = if i.nota.is_empty() { String::new() } else { p.dim(&format!(" — {}", i.nota)) };
+                    println!("     {m} {}. {linha}{nota}", n + 1);
+                }
+                println!();
+            }
+            Event::Rumo { motivo, .. } => {
+                self.fechar();
+                println!("{}\n", p.yellow(&format!("   🧭 Rumo corrigido: {motivo}")));
+            }
+            Event::Compactado { mensagens, .. } => {
+                self.fechar();
+                println!(
+                    "{}\n",
+                    p.dim(&format!("   🗒 Resumi {mensagens} mensagens antigas num diário para não perder o fio."))
+                );
+            }
             Event::OwnerMessage { .. }
             | Event::ApprovalNeeded { .. }
             | Event::ApprovalResolved { .. }

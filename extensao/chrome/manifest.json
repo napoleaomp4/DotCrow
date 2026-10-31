@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "DotCrow no Chrome",
+  "version": "1.0.0",
+  "description": "Deixa os corvos do DotCrow usarem este Chrome: abrir páginas, ler, clicar com o mouse e digitar — só nas abas do grupo DotCrow, com o cursor vermelho à vista.",
+  "minimum_chrome_version": "116",
+  "permissions": ["debugger", "tabs", "tabGroups", "scripting", "storage", "alarms"],
+  "host_permissions": ["<all_urls>"],
+  "background": { "service_worker": "fundo.js" },
+  "action": {
+    "default_title": "DotCrow no Chrome",
+    "default_popup": "janela.html",
+    "default_icon": { "16": "icones/16.png", "32": "icones/32.png", "48": "icones/48.png", "128": "icones/128.png" }
+  },
+  "icons": { "16": "icones/16.png", "32": "icones/32.png", "48": "icones/48.png", "128": "icones/128.png" }
+}

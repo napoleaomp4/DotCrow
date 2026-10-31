@@ -21,6 +21,7 @@ mod maos;
 mod memoria;
 mod pacote;
 mod painel;
+mod ponte_chrome;
 mod remoto;
 mod store;
 mod terminal;
@@ -187,6 +188,14 @@ enum Command {
     /// como ligar o que falta.
     #[command(visible_aliases = ["android", "telefone"])]
     Celular,
+    /// Instala a extensão "DotCrow no Chrome" (os corvos usam o seu Chrome: abrem páginas,
+    /// leem, clicam com o mouse e digitam) e mostra o código para conectar.
+    #[command(visible_aliases = ["chrome", "extensão", "extension"])]
+    Extensao {
+        /// Troca o código de pareamento (a extensão conectada precisa do código novo).
+        #[arg(long)]
+        novo_codigo: bool,
+    },
     /// Mostra o fluxo de uma tarefa entre os agentes.
     #[command(visible_alias = "flow")]
     Fluxo {
@@ -511,6 +520,31 @@ pub(crate) async fn testar(store: &Store, only: Option<&str>) -> Result<()> {
 }
 
 /// `dotcrow celular`: o que dá para fazer no celular e como ligar o resto.
+/// `dotcrow extensao`: grava a extensão do Chrome em ~/DotCrow/extensao-chrome e explica
+/// como carregar e conectar.
+fn extensao_status(dir: &std::path::Path, novo_codigo: bool) -> Result<()> {
+    let p = Paint::new();
+    let ponte = ponte_chrome::Ponte::carregar(dir);
+    let codigo = if novo_codigo { ponte.trocar_codigo() } else { ponte.codigo() };
+    let pasta = ponte_chrome::pasta_padrao();
+    ponte_chrome::instalar(&pasta)
+        .map_err(|e| anyhow::anyhow!("não consegui gravar a extensão em {}: {e}", pasta.display()))?;
+    println!("\n  {}\n", p.bold("🌐 DotCrow no Chrome"));
+    println!("  Extensão gravada em: {}\n", p.bold(&pasta.display().to_string()));
+    println!("  1. No Chrome, abra {}", p.bold("chrome://extensions"));
+    println!("  2. Ligue o {} (canto superior direito)", p.bold("Modo do desenvolvedor"));
+    println!("  3. {} e escolha a pasta acima", p.bold("Carregar sem compactação"));
+    println!("  4. Abra o painel ({}), clique no ícone do DotCrow no Chrome,", p.bold("dotcrow painel"));
+    println!("     cole o código e toque em Conectar:\n");
+    println!("        {}\n", p.bold(&codigo));
+    println!(
+        "  {}",
+        p.dim("O corvo só mexe nas abas do grupo vermelho DotCrow; senha e cartão sempre pedem a sua confirmação.")
+    );
+    println!("  {}\n", p.dim("Já instalou antes? Rode de novo este comando e clique em ↻ (recarregar) na extensão."));
+    Ok(())
+}
+
 pub(crate) async fn celular_status() -> Result<()> {
     let p = Paint::new();
     println!("\n  {}\n", p.bold("📱 Mãos no celular"));
@@ -783,6 +817,7 @@ async fn run(cli: Cli) -> Result<()> {
         }
         Command::Demo { qual: DemoQual::Troca } => return demo_troca().await,
         Command::Celular => return celular_status().await,
+        Command::Extensao { novo_codigo } => return extensao_status(&dir, *novo_codigo),
         Command::Civilizacao { acao, semente, compacto, modelos } => {
             let p = Paint::new();
             let pasta = civ::pasta(&dir);
@@ -1072,6 +1107,7 @@ async fn run(cli: Cli) -> Result<()> {
         | Command::Fluxo { .. }
         | Command::Demo { .. }
         | Command::Celular
+        | Command::Extensao { .. }
         | Command::Civilizacao { .. } => {}
     }
     Ok(())
