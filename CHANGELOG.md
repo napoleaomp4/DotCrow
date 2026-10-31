@@ -6,6 +6,8 @@ O formato segue o [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e 
 
 ## [Não lançado]
 
+## [0.8.0] - 2026-10-31
+
 ### Adicionado
 
 - **Tarefas longas, do começo ao fim.** O corvo monta um **plano vivo** (`plano`) e marca cada
