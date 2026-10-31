@@ -36,6 +36,9 @@
 > [!WARNING]
 > **Pré-alfa, e construído em público.** Os corvos já pensam e agem com LLMs de verdade, mas tem muita coisa pela frente e a criptografia ainda não passou por auditoria externa. Não use com dados ou chaves de produção. **Esse é o melhor momento para entrar:** o projeto é pequeno o bastante para você deixar sua marca nele. 🪶
 
+> [!TIP]
+> **Novo na [0.8.0](https://github.com/napoleaomp4/DotCrow/releases/tag/v0.8.0):** os corvos fazem **projetos inteiros do começo ao fim** (plano vivo em checklist, nada de concluir com itens abertos ou sem testar), **enxergam as páginas** pelos elementos numerados e usam o **seu Chrome** pela nova extensão — com as contas que você já usa. Veja [tarefas longas](#-tarefas-longas-do-come%C3%A7o-ao-fim) e [DotCrow no Chrome](#-dotcrow-no-chrome-extens%C3%A3o).
+
 ---
 
 ## 🐦‍⬛ O que é
@@ -48,6 +51,8 @@ Em vez de pedir uma resposta a um chat, você entrega ao **DotCrow** uma tarefa 
 
 ## ✨ O que ele faz
 
+- 🗺 **Projetos inteiros, do começo ao fim.** O corvo monta um plano em checklist, segue item por item (fazer → testar → corrigir), percebe quando está andando em círculo e muda de caminho. Só conclui com tudo feito e conferido — até 200 ações por tarefa.
+- 🌐 **Usa o seu Chrome.** Com a extensão **DotCrow no Chrome**, os corvos abrem páginas, leem, clicam com o mouse e digitam no seu navegador, com as suas contas, só nas abas do grupo DotCrow e com um cursor vermelho à vista. Senha e cartão sempre pedem a sua confirmação.
 - 🧠 **Seis corvos, cada um pensa de um jeito.** Eles se revisam entre si antes de qualquer ação, e você vê **cada um pensando ao vivo**, palavra por palavra.
 - 🔮 **O Oráculo decide quantos corvos trabalham.** Ele roda no Opus 5.5 e lê cada pedido antes do bando: um *"Oi"* ele mesmo responde, uma tarefa pequena vai para um corvo só, e as grandes vão para os 6, com o conselho dele para dividir o trabalho. Os corvos usam modelos de tokens baratos (claude-haiku-5-5 e gpt-5-nano).
 - 🔌 **257 conectores.** X, GitHub, Google Drive, Gmail, Notion, Shopify, Mercado Pago, Telegram, WhatsApp, ViaCEP, IBGE… pela API oficial de cada um, com a chave no cofre. Ler é livre; publicar, enviar e apagar pedem a sua confirmação.

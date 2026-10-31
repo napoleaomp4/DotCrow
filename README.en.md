@@ -38,6 +38,9 @@
 > [!NOTE]
 > Commands, folder names and the crows' messages are in Brazilian Portuguese (`dotcrow civ conversar` means "civilization, talk"). Many commands also have English aliases: `panel`, `keys`, `test`, `ask`, `task`, `providers`, `agents`, `connectors`.
 
+> [!TIP]
+> **New in [0.8.0](https://github.com/napoleaomp4/DotCrow/releases/tag/v0.8.0):** the crows deliver **whole projects from start to finish** (a live checklist plan; no finishing with open items or without testing), **see web pages** through numbered elements and use **your own Chrome** through the new extension — with the accounts you already use. See [long tasks](#-long-tasks-from-start-to-finish) and [DotCrow in Chrome](#-dotcrow-in-chrome-extension).
+
 ---
 
 ## 🐦‍⬛ What it is
@@ -50,6 +53,8 @@ Instead of asking a chatbot for an answer, you give **DotCrow** ([dotcrow.si](ht
 
 ## ✨ What it does
 
+- 🗺 **Whole projects, start to finish.** The crow builds a checklist plan, works item by item (do → test → fix), notices when it is going in circles and changes course. It only finishes when everything is done and checked — up to 200 actions per task.
+- 🌐 **Uses your Chrome.** With the **DotCrow in Chrome** extension, the crows open pages, read, click with the mouse and type in your browser, with your accounts, only in the tabs of the DotCrow group and with a red cursor in sight. Passwords and cards always ask for your confirmation.
 - 🧠 **Six crows, each thinking differently.** They review each other before any action, and you watch **each one think live**, word by word.
 - 🔮 **The Oracle decides how many crows work.** It runs on Opus 5.5 and reads every request before the flock: a *"Hi"* it answers itself, a small task goes to a single crow, and big ones go to all six, with its advice on how to split the work. The crows run on cheap-token models (claude-haiku-5-5 and gpt-5-nano).
 - 🔌 **257 connectors.** X, GitHub, Google Drive, Gmail, Notion, Shopify, Mercado Pago, Telegram, WhatsApp, ViaCEP, IBGE… through each service's official API, with the key in the vault. Reading is free; publishing, sending and deleting ask for your confirmation.
@@ -319,6 +324,32 @@ On a PC, just plug the phone in over USB with USB debugging on. **Calling, sendi
 
 `/audio` in terminal mode (or write *"Áudio pra post no Twitter"*), or `dotcrow audio pra post no Twitter`: the microphone opens, you speak and press Enter. Transcription uses your OpenAI key (`gpt-4o-mini-transcribe`) or, without it, Groq's (Whisper), and becomes the request for the crows — who finish the text and publish it through whatever path exists (the phone, the browser, an API), asking for your confirmation before publishing. Recordings are kept in `Downloads/DotCrow/audios`. It records through Termux:API on the phone and through `arecord`, SoX or `ffmpeg` on the computer.
 
+### 🗺 Long tasks, from start to finish
+
+For a whole project (a program, a website, a big research, hundreds of files), the crow doesn't go in a straight line:
+
+- **Live plan:** its first action is to build a checklist (`plano`), and it marks each item as doing, done or skipped (with a reason). You follow it live in the panel and in the terminal.
+- **A professional's cycle:** understand → do → check (run, test, read again) → fix. It **can't finish** with open items or without checking what changed.
+- **Compass:** if it repeats the same action or fails several times in a row, DotCrow tells it to stop, find the cause and take another path.
+- **Course review** every 20 actions and a **journal:** when the conversation gets long, the middle becomes a summary with the plan attached, so the goal is never lost. Up to 200 actions per task.
+
+### 🌐 DotCrow in Chrome (extension)
+
+The crows use **your** Chrome, with the accounts you already use: they open pages, read, click with the mouse and type.
+
+```bash
+dotcrow extensao     # writes the extension to ~/DotCrow/extensao-chrome and shows the code
+```
+
+Then, at `chrome://extensions`: turn on **Developer mode**, click **Load unpacked** and pick the folder. With the panel open, click the DotCrow icon in Chrome, paste the code and connect (the panel also has a **Chrome** screen).
+
+- The crow **reads the page with numbered elements** (`[3] botão "Entrar"`, `[4] campo email`) and acts by number: click, type, pick from menus, press keys, hover, scroll and take screenshots. A **red cursor** shows where it clicks.
+- It only touches the tabs of the red **DotCrow** group (the ones it opens and the ones you hand over from the icon).
+- The first action of each task asks for your confirmation. **Passwords and cards always ask**, even in free mode. The icon has **Pause**.
+- The extension only talks to the panel on this computer, and only with the pairing code. The panel refuses connections from websites.
+
+DotCrow's own browser (a separate window that doesn't move your mouse) uses the same eyes: `ler` numbers the elements and `clicar {n}` hits the target. With `DOTCROW_SEM_JANELA=1`, it runs invisibly (servers).
+
 ### 🔌 Connectors
 
 **257 services** with an API, in 18 categories: code (GitHub, GitLab, Jira…), cloud (Vercel, Cloudflare, Hostinger, DigitalOcean…), projects (Notion, Trello, Asana, ClickUp, Airtable…), files (Google Drive, Dropbox, OneDrive…), e-mail and calendar (Gmail, Google Calendar, Outlook, Brevo, Mailchimp…), messaging (Telegram, Discord, Slack, WhatsApp Cloud API, Evolution API, Chatwoot…), social networks (X, LinkedIn, Instagram, YouTube, TikTok…), stores and payments (Shopify, WooCommerce, Nuvemshop, Mercado Livre, Mercado Pago, Stripe, Asaas…), AI and data, search, weather, maps and Brazilian public data (ViaCEP, BrasilAPI, IBGE, Central Bank, Chamber of Deputies, Senate…).
@@ -348,6 +379,8 @@ dotcrow connectors rm github
 | Real providers: Claude, GPT, Gemini, OpenRouter, DeepSeek, Groq, Ollama | ✅ |
 | Automatic failover between LLMs when one fails | ✅ |
 | Crows acting on the computer (terminal, files, browser, mouse, keyboard) | ✅ |
+| Long tasks: live plan, compass against going in circles, course review and journal | ✅ |
+| DotCrow in Chrome extension: the crow uses your Chrome through numbered elements (`dotcrow extensao`) | ✅ |
 | Crows acting on an Android phone: screen, taps, scrolling, typing, buttons, apps, calls and SMS (`dotcrow celular`) | ✅ |
 | The owner's transcribed audio becoming a task (`/audio`, `dotcrow audio`) | ✅ |
 | 257 connectors through the official API, with the key in the vault (`dotcrow connectors`) | ✅ |
